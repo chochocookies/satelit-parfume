@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/*
+ * Provisional foundation palette — NOT verified brand colors.
+ * Satelit Parfume's real visual identity (from Instagram/Shopee) gets
+ * analyzed and turned into the real design-token system in the landing
+ * page phase. Until then this stays deliberately neutral: warm dark
+ * neutrals + one muted metal accent, nothing brand-specific asserted.
+ */
+@theme {
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: #0e0d0c;
+  --color-surface: #171513;
+  --color-ink: #f3efe7;
+  --color-ink-muted: #a79c8c;
+  --color-accent: #b08d57;
+  --color-line: #2a2622;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-ink);
+}
