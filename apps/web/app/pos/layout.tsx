@@ -77,6 +77,9 @@ export default function PosLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-ink-muted sm:inline">{subject?.name}</span>
+          <Link href="/inventory" className="text-sm text-accent hover:opacity-80">
+            Inventaris
+          </Link>
           {(subject?.roles.includes("SUPER_ADMIN") || subject?.roles.includes("ADMIN")) && (
             <Link href="/admin" className="text-sm text-accent hover:opacity-80">
               Dashboard

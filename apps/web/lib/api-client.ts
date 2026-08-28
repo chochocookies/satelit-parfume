@@ -473,6 +473,105 @@ export type Payment = {
   updated_at: string;
 };
 
+// ── Advanced inventory (Phase 11) ───────────────────────────────────
+
+export type InventoryItem = {
+  id: string;
+  branch_id: string;
+  product_variant_id: string;
+  product_name: string;
+  product_slug: string;
+  variant_name: string;
+  stock_quantity: number;
+  reserved_quantity: number;
+  available_stock: number;
+  minimum_stock: number;
+  price?: number;
+  status: string;
+  updated_at: string;
+};
+
+export type SetStockRequest = {
+  stock_quantity: number;
+  minimum_stock: number;
+  price?: number | null;
+};
+
+export type ReceiveRequest = {
+  quantity: number;
+  note?: string;
+};
+
+export type AdjustRequest = {
+  quantity_change: number;
+  note?: string;
+};
+
+export type StockMovement = {
+  id: string;
+  branch_id: string;
+  product_variant_id: string;
+  product_name: string;
+  variant_name: string;
+  quantity_change: number;
+  reason: string;
+  reference_type?: string;
+  reference_id?: string;
+  note?: string;
+  actor_user_id?: string;
+  actor_name?: string;
+  created_at: string;
+};
+
+export type TransferItem = {
+  product_variant_id: string;
+  product_name?: string;
+  variant_name?: string;
+  quantity: number;
+};
+
+export type StockTransfer = {
+  id: string;
+  from_branch_id: string;
+  to_branch_id: string;
+  status: "pending" | "completed" | "cancelled";
+  requested_by: string;
+  completed_by?: string;
+  notes?: string;
+  items: TransferItem[];
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateTransferRequest = {
+  to_branch_id: string;
+  items: TransferItem[];
+  notes?: string;
+};
+
+export type OpnameItem = {
+  id: string;
+  product_variant_id: string;
+  product_name: string;
+  variant_name: string;
+  system_quantity: number;
+  counted_quantity?: number;
+};
+
+export type StockOpname = {
+  id: string;
+  branch_id: string;
+  status: "open" | "completed";
+  started_by: string;
+  completed_by?: string;
+  notes?: string;
+  items: OpnameItem[];
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export const apiClient = {
   getHealth: () => request<HealthStatus>("/api/v1/health"),
 
@@ -645,4 +744,62 @@ export const apiClient = {
 
   posGetOrder: (branchId: string, orderId: string) =>
     adminRequest<Order>(`/api/v1/admin/branches/${branchId}/orders/${orderId}`),
+
+  // ── Advanced inventory (Phase 11) ──────────────────────────────────
+
+  adminListInventory: (branchId: string) => adminRequest<InventoryItem[]>(`/api/v1/admin/branches/${branchId}/inventory`),
+
+  adminSetStock: (branchId: string, variantId: string, req: SetStockRequest) =>
+    adminRequest<InventoryItem>(`/api/v1/admin/branches/${branchId}/inventory/${variantId}`, {
+      method: "PUT",
+      body: JSON.stringify(req),
+    }),
+
+  adminReceiveStock: (branchId: string, variantId: string, req: ReceiveRequest) =>
+    adminRequest<StockMovement>(`/api/v1/admin/branches/${branchId}/inventory/${variantId}/receive`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  adminAdjustStock: (branchId: string, variantId: string, req: AdjustRequest) =>
+    adminRequest<StockMovement>(`/api/v1/admin/branches/${branchId}/inventory/${variantId}/adjust`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  adminStockMovements: (branchId: string, variantId: string) =>
+    adminRequest<StockMovement[]>(`/api/v1/admin/branches/${branchId}/inventory/${variantId}/movements`),
+
+  adminCreateTransfer: (branchId: string, req: CreateTransferRequest) =>
+    adminRequest<StockTransfer>(`/api/v1/admin/branches/${branchId}/transfers`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  adminListTransfers: (branchId: string) => adminRequest<StockTransfer[]>(`/api/v1/admin/branches/${branchId}/transfers`),
+
+  adminCompleteTransfer: (branchId: string, transferId: string) =>
+    adminRequest<StockTransfer>(`/api/v1/admin/branches/${branchId}/transfers/${transferId}/complete`, { method: "PUT" }),
+
+  adminCancelTransfer: (branchId: string, transferId: string) =>
+    adminRequest<StockTransfer>(`/api/v1/admin/branches/${branchId}/transfers/${transferId}/cancel`, { method: "PUT" }),
+
+  adminStartOpname: (branchId: string) =>
+    adminRequest<StockOpname>(`/api/v1/admin/branches/${branchId}/opnames`, { method: "POST" }),
+
+  adminCurrentOpname: (branchId: string) => adminRequest<StockOpname | null>(`/api/v1/admin/branches/${branchId}/opnames/current`),
+
+  adminListOpnames: (branchId: string) => adminRequest<StockOpname[]>(`/api/v1/admin/branches/${branchId}/opnames`),
+
+  adminCountOpnameItem: (branchId: string, opnameId: string, itemId: string, countedQuantity: number) =>
+    adminRequest<OpnameItem>(`/api/v1/admin/branches/${branchId}/opnames/${opnameId}/items/${itemId}`, {
+      method: "PUT",
+      body: JSON.stringify({ counted_quantity: countedQuantity }),
+    }),
+
+  adminCompleteOpname: (branchId: string, opnameId: string, notes?: string) =>
+    adminRequest<StockOpname>(`/api/v1/admin/branches/${branchId}/opnames/${opnameId}/complete`, {
+      method: "PUT",
+      body: JSON.stringify({ notes: notes ?? "" }),
+    }),
 };

@@ -7,46 +7,34 @@ import { usePathname, useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
+// Its own guard, separate from /admin's and /pos's — same reasoning as
+// Phase 10's /pos: BRANCH_MANAGER and INVENTORY_STAFF need this section
+// but have no business in the SUPER_ADMIN/ADMIN-only back-office pages
+// (products, staff, cross-branch orders), which this role set can't
+// actually call successfully anyway.
+const ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"];
+
 const NAV_ITEMS = [
-  { href: "/admin", label: "Ringkasan" },
-  { href: "/admin/products", label: "Produk" },
-  { href: "/admin/orders", label: "Pesanan" },
-  { href: "/admin/branches", label: "Cabang" },
-  { href: "/admin/staff", label: "Staf" },
+  { href: "/inventory", label: "Stok" },
+  { href: "/inventory/transfers", label: "Transfer" },
+  { href: "/inventory/opname", label: "Stock Opname" },
 ];
 
-// This is the SUPER_ADMIN/ADMIN dashboard the roadmap calls Phase 9.
-// BRANCH_MANAGER/CASHIER/INVENTORY_STAFF already have their own
-// narrower, branch-scoped endpoints from earlier phases (inventory,
-// branch orders) — a dashboard variant for them is future work, not
-// this phase (see the root README's "Deliberately not in Phase 9").
-const ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN"];
-
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function InventoryLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { hasHydrated, accessToken, subject, clear } = useAuthStore();
   const [checked, setChecked] = useState(false);
   const [allowed, setAllowed] = useState(false);
 
-  const isLoginPage = pathname === "/admin/login";
-
   useEffect(() => {
-    if (isLoginPage || !hasHydrated) {
+    if (!hasHydrated) {
       return;
     }
-
     if (!accessToken) {
       router.replace("/admin/login");
       return;
     }
-
-    // Re-confirms against the live record rather than trusting whatever
-    // role list localStorage still remembers — same reasoning as the
-    // backend's own GetSubject ("re-fetches the current, live record
-    // rather than trusting the access token's claims"). A staff account
-    // suspended or demoted since the last login shouldn't keep dashboard
-    // access just because its old access token hasn't expired yet.
     apiClient
       .me(accessToken)
       .then((me) => {
@@ -62,11 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         router.replace("/admin/login");
       })
       .finally(() => setChecked(true));
-  }, [isLoginPage, hasHydrated, accessToken, router, clear]);
-
-  if (isLoginPage) {
-    return <>{children}</>;
-  }
+  }, [hasHydrated, accessToken, router, clear]);
 
   if (!hasHydrated || !checked) {
     return (
@@ -97,14 +81,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b border-line">
         <div className="flex items-center justify-between px-4 py-4 sm:px-6">
-          <Link href="/admin" className="font-display text-lg text-ink">
-            Satelit Parfume <span className="text-ink-muted">Admin</span>
+          <Link href="/inventory" className="font-display text-lg text-ink">
+            Satelit Parfume <span className="text-ink-muted">Inventaris</span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-ink-muted sm:inline">{subject?.name}</span>
-            <Link href="/inventory" className="text-sm text-accent hover:opacity-80">
-              Inventaris
-            </Link>
+            {(subject?.roles.includes("SUPER_ADMIN") || subject?.roles.includes("ADMIN")) && (
+              <Link href="/admin" className="text-sm text-accent hover:opacity-80">
+                Dashboard
+              </Link>
+            )}
             <Link href="/pos" className="text-sm text-accent hover:opacity-80">
               Kasir
             </Link>
@@ -118,7 +104,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <nav className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6">
           {NAV_ITEMS.map((item) => {
-            const active = item.href === "/admin" ? pathname === "/admin" : (pathname?.startsWith(item.href) ?? false);
+            const active = item.href === "/inventory" ? pathname === "/inventory" : (pathname?.startsWith(item.href) ?? false);
             return (
               <Link
                 key={item.href}

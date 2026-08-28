@@ -29,6 +29,7 @@ import (
 	"satelit-parfume-api/internal/payments/duitku"
 	"satelit-parfume-api/internal/products"
 	"satelit-parfume-api/internal/shifts"
+	"satelit-parfume-api/internal/stock"
 	"satelit-parfume-api/internal/users"
 	"satelit-parfume-api/pkg/database"
 	"satelit-parfume-api/pkg/jwt"
@@ -181,7 +182,9 @@ func main() {
 	ordersRepo := orders.NewRepository(pg)
 	shiftsRepo := shifts.NewRepository(pg)
 	shiftsHandler := shifts.NewHandler(shiftsRepo)
-	ordersService := orders.NewService(ordersRepo, cartService, inventoryRepo, shiftsRepo)
+	stockRepo := stock.NewRepository(pg)
+	stockHandler := stock.NewHandler(stockRepo)
+	ordersService := orders.NewService(ordersRepo, cartService, inventoryRepo, shiftsRepo, stockRepo)
 	ordersHandler := orders.NewHandler(ordersService)
 
 	// Duitku is wired up even with empty credentials — CreatePayment will
@@ -314,6 +317,14 @@ func main() {
 			// doc comment.
 			adminGroup.GET("/dashboard/stats", dashboardHandler.Stats)
 
+			// Phase 11: a transfer spans two branches, so its detail
+			// doesn't belong under either one's URL alone. Branch-level
+			// staff already see full transfer detail (items included)
+			// through the branch-scoped list above; this is purely a
+			// SUPER_ADMIN/ADMIN convenience for looking one up by id
+			// directly.
+			adminGroup.GET("/transfers/:transferId", stockHandler.GetTransfer)
+
 			// Maintenance: releases stock held by PENDING_PAYMENT orders
 			// whose reservation window elapsed with nobody looking at them
 			// (GetByID already expires one lazily on read — this catches
@@ -405,6 +416,94 @@ func main() {
 			branches.RequireBranchAccess(branchesRepo),
 			paymentsHandler.AdminPay,
 		)
+
+		// Phase 11: advanced inventory — movement ledger, transfers,
+		// opname. Same role set as inventory.Handler.SetStock (not
+		// CASHIER — this is stock management, not sales).
+		v1.POST("/admin/branches/:id/inventory/:variantId/receive",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.Receive,
+		)
+		v1.POST("/admin/branches/:id/inventory/:variantId/adjust",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.Adjust,
+		)
+		v1.GET("/admin/branches/:id/inventory/:variantId/movements",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.Movements,
+		)
+
+		v1.POST("/admin/branches/:id/transfers",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CreateTransfer,
+		)
+		v1.GET("/admin/branches/:id/transfers",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.ListTransfers,
+		)
+		// Only the destination branch can complete (they're physically
+		// receiving the goods); only the source can cancel (they
+		// requested it) — CompleteTransfer/CancelTransfer each check
+		// :id against the transfer's actual to/from branch themselves.
+		v1.PUT("/admin/branches/:id/transfers/:transferId/complete",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CompleteTransfer,
+		)
+		v1.PUT("/admin/branches/:id/transfers/:transferId/cancel",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CancelTransfer,
+		)
+
+		v1.POST("/admin/branches/:id/opnames",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.StartOpname,
+		)
+		v1.GET("/admin/branches/:id/opnames/current",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CurrentOpname,
+		)
+		v1.GET("/admin/branches/:id/opnames",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.ListOpnames,
+		)
+		v1.GET("/admin/branches/:id/opnames/:opnameId",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.GetOpname,
+		)
+		v1.PUT("/admin/branches/:id/opnames/:opnameId/items/:itemId",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CountItem,
+		)
+		v1.PUT("/admin/branches/:id/opnames/:opnameId/complete",
+			auth.RequireAuth(accessTokens),
+			auth.RequireRole("SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"),
+			branches.RequireBranchAccess(branchesRepo),
+			stockHandler.CompleteOpname,
+		)
 	}
 
 	srv := &http.Server{
@@ -439,7 +538,8 @@ func corsMiddleware(origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		// c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Cart-Token")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return

@@ -54,8 +54,8 @@ real online payment on top of that — see
 | ~~7~~ | ~~Orders & checkout~~ ✅ |
 | ~~8~~ | ~~Payments: abstraction + QRIS/gateway + webhooks~~ ✅ |
 | ~~9~~ | ~~Admin dashboard~~ ✅ |
-| ~~10 (this repo)~~ | ~~POS~~ ✅ |
-| 11 | Advanced inventory: stock movement, transfer, opname |
+| ~~10~~ | ~~POS~~ ✅ |
+| ~~11 (this repo)~~ | ~~Advanced inventory: stock movement, transfer, opname~~ ✅ |
 | 12 | Wishlist, reviews, membership, promotions |
 | 13 | PWA |
 | 14 | Capacitor (Android/iOS) |
@@ -601,6 +601,98 @@ retrying, or clicking "Bayar QRIS" twice) creates two separate payment
 attempts at the gateway; a real deployment probably wants a guard
 against that before going live.
 
+## What Phase 11 adds
+
+- **`internal/stock`** (new package, filling in a placeholder that's sat
+  in this repo since Phase 1: *"Package stock will hold stock movement,
+  transfer, and opname workflows (Phase 11)"*) — an auditable ledger
+  (`stock_movements`), branch-to-branch transfers, and stock opname
+  (physical count reconciliation). Deliberately independent of
+  `internal/inventory` at the Go level in both directions: it writes
+  `branch_inventory.stock_quantity` directly via its own SQL rather than
+  calling back into `inventory.Repository`, the same reasoning
+  `internal/dashboard` (Phase 9) used for reading other packages' tables
+  directly. `inventory.SetStock` (Phase 4) is untouched and still
+  doesn't log a movement — see "Deliberately not" below for why the two
+  now deliberately overlap instead of one replacing the other.
+- **The movement ledger** logs every real `stock_quantity` change,
+  whatever caused it — `sale` (order-driven, from `orders.applyTransition`,
+  see below), `receive`, `adjust`, `transfer_in`/`transfer_out`/
+  `transfer_cancelled`, `opname`. It deliberately does *not* log
+  reservation holds or releases (`branch_inventory.reserved_quantity`)
+  — those aren't a physical stock change, just a temporary bookkeeping
+  hold `inventory.ReserveStock`/`ReleaseStock` already handle; this is a
+  ledger of stock actually moving, not every hold placed on it.
+- **`orders.applyTransition`'s one new line**: right after `DeductStock`
+  succeeds on a PAID transition, it now also calls
+  `stock.Repository.LogMovement` with reason `sale` — inside the *exact
+  same transaction* `DeductStock` already runs in, so a stock deduction
+  and its ledger line always commit together or not at all. Every other
+  line of that method, and the whole rest of Phases 7-9's checkout and
+  status-transition logic, is untouched.
+- **Receive and adjust** (`POST .../inventory/:variantId/receive`,
+  `POST .../inventory/:variantId/adjust`) — the manual stock-changing
+  actions that now *do* get logged, alongside the original Phase 4
+  `PUT .../inventory/:variantId` (`SetStock`) which still doesn't.
+  Receive is always additive; adjust takes a signed delta and can go
+  negative (writing off damage or loss), but a delta that would push
+  stock below zero is rejected outright rather than floored to zero —
+  silently applying a smaller adjustment than requested is worse than
+  just saying no.
+- **Transfers** — creating one deducts the source branch's stock
+  *immediately* (checked and locked with the same `SELECT ... FOR
+  UPDATE` pattern `inventory.ReserveStock` already uses, so two
+  transfers racing for the last few units can't both succeed), so a
+  pending transfer can't be oversold from the source. Nothing models the
+  physical truck in between — the stock is simply "in transit, counted
+  at neither branch" while pending. Only the *destination* branch can
+  complete one (they're the ones physically receiving the goods); only
+  the *source* can cancel one (they requested it) — both checks live in
+  `stock.Repository`, not just the handler, so they hold even if a route
+  ever gets wired up differently later.
+- **Stock opname** — starting a count snapshots every current
+  `branch_inventory` row for that branch into `stock_opname_items` in
+  one `INSERT ... SELECT`, freezing `system_quantity` at that moment
+  rather than reading it live when the count later completes (the whole
+  point is comparing against what the system said *when counting
+  began*, not a moving target if a sale happens mid-count). Completing
+  applies every line that was actually counted and differs from that
+  frozen baseline as its own `opname` movement; a line nobody counted
+  stays untouched entirely — uncounted is unknown, not zero, so treating
+  silence as "nothing here" would be wrong. One open count per branch at
+  a time, enforced the same way Phase 10's one-open-shift-per-cashier
+  is: a partial unique index, not just application logic.
+- **Frontend**: a new `/inventory` section with its own shell
+  (`app/inventory/layout.tsx`), the same reasoning Phase 10 gave `/pos`
+  its own shell rather than folding it into `/admin` — BRANCH_MANAGER
+  and INVENTORY_STAFF need this section but can't actually call most of
+  `/admin`'s SUPER_ADMIN/ADMIN-only endpoints, so showing them that nav
+  would just be a dead end. Three pages: stock (list, receive, adjust,
+  movement history per item), transfers (create, list both directions,
+  complete/cancel), and opname (start, count each line, complete, see
+  the discrepancy summary). `components/staff/branch-picker.tsx` is
+  Phase 10's inline "pick a branch" screen pulled out into a shared
+  component — worth it the third time it was needed, not the second;
+  `/pos`'s own original inline version is untouched rather than
+  refactored to use it, since touching already-verified Phase 10 code
+  for a cosmetic dedupe isn't worth the risk.
+
+Deliberately **not** in Phase 11: a transfer is all-or-nothing — there's
+no partial receipt if only some of what was sent actually arrives, and
+no way to note damage discovered on arrival separately from a plain
+quantity mismatch (that would need its own opname-style count step on
+receipt, which is a reasonable future addition, not this phase's scope).
+Opname items carry no per-line note field, only a session-level one —
+staff can't record *why* a specific count came up short, only that it
+did. And nothing here builds low-stock *alerts* despite the roadmap line
+naming them: Phase 9's dashboard already surfaces a low-stock count
+using the same `minimum_stock` field this phase's movements interact
+with, and a real alerting/notification system (email, push, whatever) is
+a meaningfully different piece of infrastructure than an inventory
+workflow — worth its own pass once there's a notification channel to
+send through (see Phase 2's same deferral of customer email
+verification for the same underlying reason).
+
 ## Tech stack
 
 **Backend** — Go, Gin, PostgreSQL (pgx), Redis, JWT (Phase 2), WebSocket
@@ -1077,6 +1169,67 @@ curl -sX PUT "localhost:8080/api/v1/admin/branches/<branch_id>/shifts/<shift_id>
 #     "closing_balance": 245000, "discrepancy": 0, "status": "closed" }
 ```
 
+## Trying advanced inventory
+
+Same `admin@satelitparfume.dev` login as the sections above. `<branch_id>`
+and `<branch_b_id>` are two different branches from `GET /branches`;
+`<variant_id>` is a product's variant id from `GET /products/<slug>`.
+
+**Receiving stock, then adjusting for damage** — and watching both show
+up in the movement history:
+
+```bash
+curl -sX POST "localhost:8080/api/v1/admin/branches/<branch_id>/inventory/<variant_id>/receive" \
+  -H "Authorization: Bearer <access_token>" -H 'Content-Type: application/json' \
+  -d '{"quantity": 50, "note": "PO #1023 dari supplier"}' | jq
+
+curl -sX POST "localhost:8080/api/v1/admin/branches/<branch_id>/inventory/<variant_id>/adjust" \
+  -H "Authorization: Bearer <access_token>" -H 'Content-Type: application/json' \
+  -d '{"quantity_change": -2, "note": "2 botol pecah saat unboxing"}' | jq
+
+curl -s "localhost:8080/api/v1/admin/branches/<branch_id>/inventory/<variant_id>/movements" \
+  -H "Authorization: Bearer <access_token>" | jq
+# → [{"reason":"adjust","quantity_change":-2,...}, {"reason":"receive","quantity_change":50,...}, ...]
+```
+
+**Transferring stock between branches** — note the source branch's stock
+drops the moment the transfer is *created*, not when it's completed:
+
+```bash
+curl -sX POST "localhost:8080/api/v1/admin/branches/<branch_id>/transfers" \
+  -H "Authorization: Bearer <access_token>" -H 'Content-Type: application/json' \
+  -d '{"to_branch_id":"<branch_b_id>","items":[{"product_variant_id":"<variant_id>","quantity":10}]}' | jq
+# → status: "pending" — note the transfer id, and check <branch_id>'s
+#   inventory: stock_quantity just dropped by 10, even though <branch_b_id>
+#   doesn't have it yet either
+
+curl -sX PUT "localhost:8080/api/v1/admin/branches/<branch_b_id>/transfers/<transfer_id>/complete" \
+  -H "Authorization: Bearer <access_token>" | jq
+# → status: "completed" — now <branch_b_id>'s stock has the 10 units.
+#   Completing from <branch_id> instead (the wrong branch) would 409.
+```
+
+**Running a stock opname** — start a count, record what was actually on
+the shelf for one item (leaving everything else uncounted), and see only
+that one line get corrected:
+
+```bash
+curl -sX POST "localhost:8080/api/v1/admin/branches/<branch_id>/opnames" \
+  -H "Authorization: Bearer <access_token>" | jq
+# → note the opname id and the item id for <variant_id> in its items[]
+
+curl -sX PUT "localhost:8080/api/v1/admin/branches/<branch_id>/opnames/<opname_id>/items/<item_id>" \
+  -H "Authorization: Bearer <access_token>" -H 'Content-Type: application/json' \
+  -d '{"counted_quantity": 45}' | jq
+
+curl -sX PUT "localhost:8080/api/v1/admin/branches/<branch_id>/opnames/<opname_id>/complete" \
+  -H "Authorization: Bearer <access_token>" -H 'Content-Type: application/json' \
+  -d '{"notes":"Hitung bulanan"}' | jq
+# → status: "completed" — <variant_id>'s stock now matches the counted
+#   45, logged as one "opname" movement; every other item this branch
+#   stocks is untouched, since nobody entered a count for them
+```
+
 ## Testing
 
 ```bash
@@ -1118,7 +1271,17 @@ checkout are, again, database-touching CRUD reusing an already-tested
 checkout path rather than new pure logic — but see that same
 Verification notes section for exactly what got hand-checked instead
 (every new SQL column against its migration, gin's routing tree for the
-new branch-scoped paths).
+new branch-scoped paths). Phase 11 is the same story again — the ledger,
+transfers, and opname are all database-touching CRUD with real locking
+logic (`SELECT ... FOR UPDATE`, partial unique indexes) rather than pure
+functions a unit test would naturally cover — see
+[Verification notes](#verification-notes) for exactly what got
+hand-checked in its place, including one thing this phase's notes are
+explicit about *not* having fully verified: gin's handling of a static
+child, another static child, and a param child all coexisting under the
+same route segment (`/opnames`, `/opnames/current`, `/opnames/:opnameId`),
+which no earlier phase's routes happened to exercise all three of at
+once.
 
 ## Building
 
@@ -1216,15 +1379,19 @@ satelit-parfume/
 │   │   │   ├── products/     products, variants, images, brands, CSV import, manual admin CRUD (Phase 9)
 │   │   │   ├── branches/     branch CRUD, branch_staff, RequireBranchAccess middleware
 │   │   │   ├── inventory/    branch_inventory: stock, price override, availability lookup
+│   │   │   │                (SetStock, Phase 4, still doesn't log a movement — see stock/ below)
 │   │   │   ├── cart/         carts, cart_items, stock validation, one-branch-per-cart
 │   │   │   ├── orders/       checkout, stock reservation, status graph, order snapshots,
 │   │   │   │                admin cross-branch view (Phase 9), POS checkout + cash/qris
-│   │   │   │                payment_method tracking (Phase 10)
+│   │   │   │                payment_method tracking (Phase 10), 'sale' stock movements (Phase 11)
 │   │   │   ├── payments/     Provider interface, payment_transactions audit log, staff-facing
 │   │   │   │                QRIS-at-counter endpoint for POS (Phase 10, no customer ownership check)
 │   │   │   │   └── duitku/   QRIS/VA adapter — three separate signature formulas, see below
 │   │   │   ├── dashboard/    admin overview stats — revenue, order counts, low-stock (Phase 9)
 │   │   │   ├── shifts/       cashier till sessions: open/close, cash reconciliation (Phase 10)
+│   │   │   ├── stock/        movement ledger, branch-to-branch transfers, stock opname (Phase 11) —
+│   │   │   │                deliberately independent of inventory/ at the Go level, see "What
+│   │   │   │                Phase 11 adds"
 │   │   │   ├── health/
 │   │   │   └── ...           everything else: empty (doc.go only) until its phase lands
 │   │   ├── pkg/
@@ -1235,7 +1402,8 @@ satelit-parfume/
 │   │   │   ├── slug/         URL-slug generation (products AND branches)
 │   │   │   ├── database/, logger/
 │   │   │   └── storage/, websocket/   still stubs
-│   │   ├── migrations/       000001_init … 000008_pos (see Database setup) — Phase 9 needed none
+│   │   ├── migrations/       000001_init … 000009_advanced_inventory (see Database setup)
+│   │   │                     — Phase 9 needed none
 │   │   ├── seeds/            products_verified.csv (real, importable) + dev_seed.sql (fake, dev-only)
 │   │   └── Dockerfile
 │   └── web/                  Next.js frontend
@@ -1243,17 +1411,20 @@ satelit-parfume/
 │       │                     /admin/* — staff dashboard (Phase 9): login,
 │       │                     overview, products, orders, branches, staff;
 │       │                     /pos/* — cashier till (Phase 10): shift open/close,
-│       │                     product search, cart, cash/QRIS checkout, receipt
+│       │                     product search, cart, cash/QRIS checkout, receipt;
+│       │                     /inventory/* — stock management (Phase 11): receive/
+│       │                     adjust/movement history, transfers, opname
 │       ├── components/       site-header/footer, site-chrome (Phase 9 — hides
-│       │                     the above on /admin AND /pos routes as of Phase 10),
-│       │                     branch-selector, cart-button, cart-panel, product-card,
-│       │                     shop-page-client, product-detail-client,
+│       │                     the above on /admin, /pos, AND /inventory routes as
+│       │                     of Phase 11), branch-selector, cart-button, cart-panel,
+│       │                     product-card, shop-page-client, product-detail-client,
 │       │                     providers, backend-status, admin/ (stat-card,
-│       │                     status-badge), ui/ (still empty)
-│       ├── stores/           branch-store.ts (also drives which branch a POS session
-│       │                     is working as of Phase 10), cart-store.ts, auth-store.ts
-│       │                     (Phase 9, staff session) — all Zustand + localStorage,
-│       │                     hydration-safe
+│       │                     status-badge), staff/ (branch-picker, shared by
+│       │                     /inventory's three pages as of Phase 11), ui/ (still empty)
+│       ├── stores/           branch-store.ts (drives which branch a POS or inventory
+│       │                     session is working, since Phase 10/11), cart-store.ts,
+│       │                     auth-store.ts (Phase 9, staff session) — all Zustand +
+│       │                     localStorage, hydration-safe
 │       ├── hooks/             use-click-outside.ts, use-cart.ts
 │       ├── lib/               utils.ts (cn), format.ts (Rupiah), api-client.ts
 │       └── Dockerfile
@@ -1294,23 +1465,34 @@ ownership**: a cashier's shift id, for both the sale it rings up and the
 till it's reconciled against, is always looked up server-side from the
 authenticated caller (`shifts.GetOpenForUser`), never accepted as a
 value the client supplies — `CheckoutRequest.CashierShiftID` has no JSON
-tag at all, specifically so no request body can set it.
+tag at all, specifically so no request body can set it — and now
+**branch-side transfer authorization**: `stock.Repository` checks a
+transfer's actual `to_branch_id`/`from_branch_id` against whichever
+branch the request came in under, so completing or cancelling a transfer
+through the wrong branch's URL fails even if that caller otherwise has
+every role/permission needed — same "verify server-side, don't trust
+which branch the client claims to be acting as" reasoning as
+`RequireBranchAccess` itself, just applied one level deeper since a
+transfer (unlike almost everything else that's branch-scoped) genuinely
+involves two branches at once.
 
 Still ahead, landing with the phase that needs it: fine-grained
 permission-code checks (the `permissions`/`role_permissions` tables exist
 but nothing reads them yet), input validation beyond struct binding,
 general admin-action audit logging (section 64's `audit_logs` table —
 `payment_transactions` only logs payment webhooks specifically, not
-"ADMIN changed product price" or similar — Phases 9 and 10 both gave the
-admin/staff surface more actions worth auditing this way, but neither
-built the auditing system itself), a "how many active SUPER_ADMINs
-remain" check before letting one deactivate or demote the last other
-one, an idempotency guard on QRIS-at-counter payment creation (Phase
-10's own "Deliberately not" note), and the rest of the spec's security
-test list (SQL injection/XSS sweeps, expired/invalid JWT edge cases,
-...) — those need the phases that introduce the actions being audited,
-or are worth a dedicated pass now that the admin and POS surfaces
-actually exist to test.
+"ADMIN changed product price" or similar — Phases 9, 10, and 11 all gave
+the admin/staff surface more actions worth auditing this way, but none
+of them built the auditing system itself; Phase 11's own movement ledger
+covers stock specifically, which is real progress here but isn't a
+general answer), a "how many active SUPER_ADMINs remain" check before
+letting one deactivate or demote the last other one, an idempotency
+guard on QRIS-at-counter payment creation (Phase 10's own "Deliberately
+not" note), and the rest of the spec's security test list (SQL
+injection/XSS sweeps, expired/invalid JWT edge cases, ...) — those need
+the phases that introduce the actions being audited, or are worth a
+dedicated pass now that the admin, POS, and inventory surfaces actually
+exist to test.
 
 ## Data notes
 
@@ -1330,14 +1512,32 @@ What was actually checked while building this, and how:
 
 | Check | Backend (Go) | Frontend (Next.js) |
 |---|---|---|
-| Syntax/formatting | `gofmt -l` — clean across all 72 `.go` files (Phase 1-10) | — |
+| Syntax/formatting | `gofmt -l` — clean across all 74 `.go` files (Phase 1-11) | — |
 | Type check | — | `tsc --noEmit` — clean (Phase 9 is the first phase this sandbox could actually run it; see below) |
 | Lint | — | `eslint .` — clean (Phase 9, same reason) |
 | Dependency install | fully resolvable this phase, with a caveat (see below) | `npm install` succeeded outright — `registry.npmjs.org` is reachable here |
 | Production build | not run for real (see below) | reaches `next build`'s TypeScript + Turbopack bundling step cleanly; fails at the same pre-existing font fetch every phase has hit (see below) |
-| Unit tests | `go test ./...` run in full since Phase 9 (see below) — everything already there passed both times, and the Phase 9 run also caught (and that phase fixed) Phase 3's `ParseCSV` off-by-one | n/a — no frontend test runner configured, unchanged from every phase before this one |
-| SQL correctness | Every new query's column list hand-checked against its migration's `CREATE TABLE` statement, line-by-line (Phase 9: `products`, `product_variants`, `product_images`, `orders`, `branch_inventory`, `users`, `user_roles`; Phase 10: `cashier_shifts`, plus `orders`' two new columns re-checked against the extended `orderColumns`/`scanOrder`) | n/a |
-| Logic correctness | New route registrations hand-traced against gin's actual (per-HTTP-method) routing tree to rule out a static/param path conflict — e.g. `GET /admin/orders` next to `GET /admin/orders/:id` in Phase 9, `POST /admin/branches/:id/shifts` next to the existing `:id/staff`/`:id/inventory`/`:id/orders` siblings in Phase 10 — before trusting it, rather than assuming | n/a |
+| Unit tests | `go test ./...` run in full since Phase 9 (see below) — everything already there passed every time, and the Phase 9 run also caught (and that phase fixed) Phase 3's `ParseCSV` off-by-one | n/a — no frontend test runner configured, unchanged from every phase before this one |
+| SQL correctness | Every new query's column list hand-checked against its migration's `CREATE TABLE` statement, line-by-line (Phase 9: `products`, `product_variants`, `product_images`, `orders`, `branch_inventory`, `users`, `user_roles`; Phase 10: `cashier_shifts`, plus `orders`' two new columns re-checked against the extended `orderColumns`/`scanOrder`; Phase 11: `stock_movements`, `stock_transfers`, `stock_transfer_items`, `stock_opnames`, `stock_opname_items`, plus every `branch_inventory` mutation re-checked against Phase 4's original columns) | n/a |
+| Logic correctness | New route registrations hand-traced against gin's actual (per-HTTP-method) routing tree to rule out a static/param path conflict — e.g. `GET /admin/orders` next to `GET /admin/orders/:id` in Phase 9, `POST /admin/branches/:id/shifts` next to the existing `:id/staff`/`:id/inventory`/`:id/orders` siblings in Phase 10 — before trusting it, rather than assuming; see below for the one specific case Phase 11 could reason about but not empirically re-run | n/a |
+
+Phase 11 adds one honest gap to that last row rather than papering over
+it: `/admin/branches/:id/opnames`, `.../opnames/current`, and
+`.../opnames/:opnameId` put a static terminal, a static child, *and* a
+param child all under the same route segment at once — a combination no
+earlier phase's routes happened to exercise together (Phase 9's
+static-terminal-next-to-param-child and Phase 10's
+multiple-static-children cases each covered two of the three, not all
+three). This is standard, well-documented gin/httprouter behavior
+(static matches take priority over param matches at each tree level),
+and Go's own compiler confirms every handler reference is wired
+correctly — but route *registration* conflicts are a Gin runtime panic,
+not a compile error, and actually starting the server needs a real
+Postgres connection this sandbox doesn't have. So this one is reasoned
+from gin's documented routing semantics and this repo's own
+already-working precedent, not re-verified by actually starting the
+server — worth being precise about instead of quietly folding it into
+"hand-traced" the way the simpler two-way cases were.
 
 This phase's sandbox differs from whatever produced Phases 1-8's notes in
 two ways worth being precise about, rather than letting the table above
@@ -1361,16 +1561,16 @@ imply more changed than actually did:
    **added only in a throwaway copy used purely to verify each phase,
    never in the `go.mod` actually shipped in this repo.** With those in
    a scratch copy, `go build ./...`, `go vet ./...`, and `go test ./...`
-   all ran for real and came back clean in both Phase 9 and Phase 10 —
-   which is what caught Phase 3's `ParseCSV` bug in the first place. On a
+   all ran for real and came back clean in Phases 9, 10, and 11 — which
+   is what caught Phase 3's `ParseCSV` bug in the first place. On a
    normal machine with ordinary internet access none of this is needed:
    `go mod tidy` resolves everything through the real module proxy, same
    as it always would.
 
 `next build` gets further than any pre-Phase-9 notes describe — all the
-way through TypeScript checking and Turbopack bundling, in both Phase 9
-and Phase 10 (`qrcode.react` included) — before failing at the exact
-same `next/font` → `fonts.googleapis.com` fetch Phase 1's notes already
+way through TypeScript checking and Turbopack bundling, in Phases 9, 10
+(`qrcode.react` included), and 11 — before failing at the exact same
+`next/font` → `fonts.googleapis.com` fetch Phase 1's notes already
 named. That domain still isn't reachable here; it's a standard public
 endpoint with no unusual access requirements, so it resolves itself the
 moment this runs somewhere with real internet access.

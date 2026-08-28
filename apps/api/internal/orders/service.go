@@ -9,6 +9,7 @@ import (
 	"satelit-parfume-api/internal/cart"
 	"satelit-parfume-api/internal/inventory"
 	"satelit-parfume-api/internal/shifts"
+	"satelit-parfume-api/internal/stock"
 )
 
 var (
@@ -39,10 +40,11 @@ type Service struct {
 	cart      *cart.Service
 	inventory *inventory.Repository
 	shifts    *shifts.Repository
+	stock     *stock.Repository
 }
 
-func NewService(repo *Repository, cartService *cart.Service, inventoryRepo *inventory.Repository, shiftsRepo *shifts.Repository) *Service {
-	return &Service{repo: repo, cart: cartService, inventory: inventoryRepo, shifts: shiftsRepo}
+func NewService(repo *Repository, cartService *cart.Service, inventoryRepo *inventory.Repository, shiftsRepo *shifts.Repository, stockRepo *stock.Repository) *Service {
+	return &Service{repo: repo, cart: cartService, inventory: inventoryRepo, shifts: shiftsRepo, stock: stockRepo}
 }
 
 // Checkout re-validates and reserves stock for every cart line inside one
@@ -320,6 +322,20 @@ func (s *Service) applyTransition(ctx context.Context, order *Order, newStatus, 
 			}
 			if err := s.inventory.DeductStock(ctx, tx, order.BranchID, item.ProductVariantID, item.Quantity); err != nil {
 				return nil, fmt.Errorf("deduct stock: %w", err)
+			}
+			// Phase 11: every real stock_quantity change gets a ledger
+			// line — see internal/stock's package doc comment. Best-effort
+			// in the sense that a logging failure here still fails the
+			// whole transaction (unlike Phase 10's post-commit
+			// SetPaymentMethod calls): this INSERT runs inside the exact
+			// same tx as DeductStock, so either both the stock change and
+			// its ledger line commit together, or neither does — there's
+			// no risk of a stock change existing with no record of why.
+			if _, err := s.stock.LogMovement(ctx, tx, stock.LogMovementParams{
+				BranchID: order.BranchID, VariantID: item.ProductVariantID, QuantityChange: -item.Quantity,
+				Reason: "sale", ReferenceType: "order", ReferenceID: order.ID,
+			}); err != nil {
+				return nil, fmt.Errorf("log stock movement: %w", err)
 			}
 		}
 	case StatusCancelled, StatusExpired:
