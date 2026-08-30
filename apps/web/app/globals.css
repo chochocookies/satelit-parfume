@@ -23,3 +23,63 @@ body {
   background-color: var(--color-background);
   color: var(--color-ink);
 }
+
+/*
+ * A small, shared set of entrance animations — used for modals, cards,
+ * and page content across the customer site, /admin, /pos, and
+ * /inventory, so motion feels like one consistent design decision
+ * rather than a different one-off per page. Kept subtle (short
+ * duration, small distances) since the goal is "feels considered", not
+ * flashy. prefers-reduced-motion turns all of them off entirely, not
+ * just shorter — motion-sensitive visitors get a plain, instant UI.
+ */
+@utility animate-fade-in {
+  animation: satelit-fade-in 0.35s ease-out both;
+}
+
+@utility animate-fade-in-up {
+  animation: satelit-fade-in-up 0.4s ease-out both;
+}
+
+@utility animate-scale-in {
+  animation: satelit-scale-in 0.2s ease-out both;
+}
+
+@keyframes satelit-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes satelit-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes satelit-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-scale-in {
+    animation: none;
+  }
+}

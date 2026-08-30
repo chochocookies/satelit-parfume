@@ -35,7 +35,7 @@ func identity(c *gin.Context) Identity {
 func (h *Handler) Get(c *gin.Context) {
 	cartResult, err := h.service.Get(c.Request.Context(), identity(c))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load cart")
+		response.InternalError(c, err, "could not load cart")
 		return
 	}
 	response.OK(c, http.StatusOK, "cart", cartResult)
@@ -82,7 +82,7 @@ func (h *Handler) RemoveItem(c *gin.Context) {
 
 func (h *Handler) Clear(c *gin.Context) {
 	if err := h.service.Clear(c.Request.Context(), identity(c)); err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not clear cart")
+		response.InternalError(c, err, "could not clear cart")
 		return
 	}
 	response.OK(c, http.StatusOK, "cart cleared", nil)
@@ -99,6 +99,6 @@ func respondCartError(c *gin.Context, err error) {
 	case errors.Is(err, inventory.ErrNotFound):
 		response.Error(c, http.StatusNotFound, "NOT_FOUND", "product variant not found or inactive")
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "something went wrong")
+		response.InternalError(c, err, "something went wrong")
 	}
 }

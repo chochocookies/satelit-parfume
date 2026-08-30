@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { apiClient, ApiError, type Branch, type BranchUpsertRequest } from "@/lib/api-client";
 
@@ -124,8 +125,9 @@ export default function AdminBranchesPage() {
         </div>
         <button
           onClick={openCreate}
-          className="rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
+          className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
         >
+          <Plus className="h-4 w-4" />
           Tambah Cabang
         </button>
       </div>
@@ -156,10 +158,12 @@ export default function AdminBranchesPage() {
                   <td className="px-4 py-3 text-ink-muted">{branch.status}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-3">
-                      <button onClick={() => setStaffBranch(branch)} className="text-accent hover:opacity-80">
+                      <button onClick={() => setStaffBranch(branch)} className="flex items-center gap-1 text-accent transition hover:opacity-80">
+                        <Users className="h-3.5 w-3.5" />
                         Staf
                       </button>
-                      <button onClick={() => openEdit(branch)} className="text-accent hover:opacity-80">
+                      <button onClick={() => openEdit(branch)} className="flex items-center gap-1 text-accent transition hover:opacity-80">
+                        <Pencil className="h-3.5 w-3.5" />
                         Ubah
                       </button>
                       <button
@@ -168,8 +172,9 @@ export default function AdminBranchesPage() {
                             deleteMutation.mutate(branch.id);
                           }
                         }}
-                        className="text-red-400 hover:opacity-80"
+                        className="flex items-center gap-1 text-red-400 transition hover:opacity-80"
                       >
+                        <Trash2 className="h-3.5 w-3.5" />
                         Hapus
                       </button>
                     </div>
@@ -183,7 +188,7 @@ export default function AdminBranchesPage() {
 
       {form && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
             <h2 className="font-display text-lg text-ink">{editing ? "Ubah Cabang" : "Tambah Cabang"}</h2>
 
             <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
@@ -321,7 +326,7 @@ function BranchStaffModal({ branch, onClose }: { branch: Branch; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <h2 className="font-display text-lg text-ink">Staf — {branch.name}</h2>
 
         {staffQuery.isLoading && <p className="mt-4 text-sm text-ink-muted">Memuat...</p>}

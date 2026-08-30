@@ -745,6 +745,28 @@ export const apiClient = {
   posGetOrder: (branchId: string, orderId: string) =>
     adminRequest<Order>(`/api/v1/admin/branches/${branchId}/orders/${orderId}`),
 
+  // ── Customer account (login/register) ──────────────────────────────
+  //
+  // Reuses the exact same AuthResponse/TokenPair/AdminSubject shapes the
+  // staff side already has — internal/auth's own model.go comment says
+  // Subject is "deliberately the same for staff and customers", so there
+  // was never a reason to duplicate the type. See stores/customer-auth-store.ts
+  // for why this gets its own store rather than sharing auth-store.ts.
+
+  customerRegister: (name: string, email: string, phone: string, password: string) =>
+    request<AuthResponse>("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, phone: phone || undefined, password }),
+    }),
+
+  customerLogin: (email: string, password: string) =>
+    request<AuthResponse>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+
+  customerMe: (accessToken: string) => request<AdminSubject>("/api/v1/auth/me", { headers: authHeaders(accessToken) }),
+
+  customerLogout: (refreshToken: string) =>
+    request<null>("/api/v1/auth/logout", { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) }),
+
   // ── Advanced inventory (Phase 11) ──────────────────────────────────
 
   adminListInventory: (branchId: string) => adminRequest<InventoryItem[]>(`/api/v1/admin/branches/${branchId}/inventory`),

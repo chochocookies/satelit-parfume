@@ -5,7 +5,13 @@
 // five slightly-different copies of the same three lines.
 package response
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"satelit-parfume-api/pkg/logger"
+)
 
 type Envelope struct {
 	Success bool   `json:"success"`
@@ -24,4 +30,20 @@ func OK(c *gin.Context, status int, message string, data any) {
 // a message safe to show the client, and log details separately.
 func Error(c *gin.Context, status int, code, message string) {
 	c.JSON(status, Envelope{Success: false, Message: message, Code: code})
+}
+
+// InternalError is Error's 500-specific sibling — added after a real bug
+// report turned out to be undiagnosable because every handler's generic
+// "something went wrong" branch matched Error's own doc comment's second
+// half ("log details separately") in word only: nothing anywhere in this
+// codebase actually called the logger for one of these before this
+// existed. This is the fix: the real err always gets logged server-side
+// with the request's method and path, so `docker logs` (or any other
+// stdout collector) shows exactly what happened, while the client still
+// only ever sees the same safe, generic clientMessage Error would have
+// sent — nothing about what the client receives changes, only what the
+// operator can now see.
+func InternalError(c *gin.Context, err error, clientMessage string) {
+	logger.Errorf("%s %s -> %v", c.Request.Method, c.Request.URL.Path, err)
+	c.JSON(http.StatusInternalServerError, Envelope{Success: false, Message: clientMessage, Code: "INTERNAL_ERROR"})
 }

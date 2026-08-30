@@ -121,7 +121,7 @@ function ReceiveModal({ branchId, item, onClose }: { branchId: string; item: Inv
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="w-full max-w-sm animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <h2 className="font-display text-lg text-ink">Terima Stok</h2>
         <p className="mt-1 text-sm text-ink-muted">
           {item.product_name} · {item.variant_name} — saat ini {item.stock_quantity}
@@ -179,7 +179,7 @@ function AdjustModal({ branchId, item, onClose }: { branchId: string; item: Inve
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="w-full max-w-sm animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <h2 className="font-display text-lg text-ink">Sesuaikan Stok</h2>
         <p className="mt-1 text-sm text-ink-muted">
           {item.product_name} · {item.variant_name} — saat ini {item.stock_quantity}
@@ -238,7 +238,7 @@ function HistoryModal({ branchId, item, onClose }: { branchId: string; item: Inv
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="max-h-[80vh] w-full max-w-md overflow-y-auto animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <h2 className="font-display text-lg text-ink">Riwayat — {item.product_name}</h2>
         <p className="text-sm text-ink-muted">{item.variant_name}</p>
 

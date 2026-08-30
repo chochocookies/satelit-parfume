@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeftRight, Boxes, ClipboardCheck, LayoutDashboard, Loader2, LogOut, PackageSearch } from "lucide-react";
 
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -15,9 +16,9 @@ import { useAuthStore } from "@/stores/auth-store";
 const ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"];
 
 const NAV_ITEMS = [
-  { href: "/inventory", label: "Stok" },
-  { href: "/inventory/transfers", label: "Transfer" },
-  { href: "/inventory/opname", label: "Stock Opname" },
+  { href: "/inventory", label: "Stok", icon: PackageSearch },
+  { href: "/inventory/transfers", label: "Transfer", icon: ArrowLeftRight },
+  { href: "/inventory/opname", label: "Stock Opname", icon: ClipboardCheck },
 ];
 
 export default function InventoryLayout({ children }: { children: React.ReactNode }) {
@@ -55,7 +56,7 @@ export default function InventoryLayout({ children }: { children: React.ReactNod
   if (!hasHydrated || !checked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-sm text-ink-muted">Memuat...</p>
+        <Loader2 className="h-5 w-5 animate-spin text-ink-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -87,17 +88,20 @@ export default function InventoryLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-ink-muted sm:inline">{subject?.name}</span>
             {(subject?.roles.includes("SUPER_ADMIN") || subject?.roles.includes("ADMIN")) && (
-              <Link href="/admin" className="text-sm text-accent hover:opacity-80">
-                Dashboard
+              <Link href="/admin" className="flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Dashboard</span>
               </Link>
             )}
-            <Link href="/pos" className="text-sm text-accent hover:opacity-80">
-              Kasir
+            <Link href="/pos" className="flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80">
+              <Boxes className="h-4 w-4" />
+              <span className="hidden sm:inline">Kasir</span>
             </Link>
             <button
               onClick={handleLogout}
-              className="rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent"
+              className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent"
             >
+              <LogOut className="h-4 w-4" />
               Keluar
             </button>
           </div>
@@ -105,21 +109,23 @@ export default function InventoryLayout({ children }: { children: React.ReactNod
         <nav className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6">
           {NAV_ITEMS.map((item) => {
             const active = item.href === "/inventory" ? pathname === "/inventory" : (pathname?.startsWith(item.href) ?? false);
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm transition ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm transition ${
                   active ? "bg-accent text-background" : "text-ink-muted hover:text-ink"
                 }`}
               >
+                <Icon className="h-4 w-4" />
                 {item.label}
               </Link>
             );
           })}
         </nav>
       </header>
-      <main className="flex-1 p-4 sm:p-6">{children}</main>
+      <main className="flex-1 animate-fade-in p-4 sm:p-6">{children}</main>
     </div>
   );
 }

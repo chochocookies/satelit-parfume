@@ -41,7 +41,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	result, err := h.repo.List(c.Request.Context(), filter)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load products")
+		response.InternalError(c, err, "could not load products")
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *Handler) GetBySlug(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "product not found")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load product")
+		response.InternalError(c, err, "could not load product")
 		return
 	}
 
@@ -114,7 +114,7 @@ func (h *Handler) Import(c *gin.Context) {
 
 	result, err := h.repo.Import(c.Request.Context(), h.categories, rows)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "import failed partway through: "+err.Error())
+		response.InternalError(c, err, "import failed partway through: "+err.Error())
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 
 	result, err := h.repo.List(c.Request.Context(), filter)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load products")
+		response.InternalError(c, err, "could not load products")
 		return
 	}
 	response.OK(c, http.StatusOK, "products", result)
@@ -198,6 +198,6 @@ func respondUpsertError(c *gin.Context, err error) {
 	case errors.Is(err, ErrDuplicateSKU):
 		response.Error(c, http.StatusConflict, "DUPLICATE_SKU", err.Error())
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not save product")
+		response.InternalError(c, err, "could not save product")
 	}
 }

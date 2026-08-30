@@ -693,6 +693,71 @@ workflow — worth its own pass once there's a notification channel to
 send through (see Phase 2's same deferral of customer email
 verification for the same underlying reason).
 
+## Post-Phase-11 fixes and polish
+
+Not a numbered phase — a real person ran this repo end-to-end for the
+first time (Docker Compose, a live browser, both servers up at once) and
+reported what broke. Landing those fixes here, in the exact order they
+came up, rather than folding them silently into Phase 11's own section
+above:
+
+- **CORS was missing `X-Cart-Token`.** `corsMiddleware` (Phase 2) only
+  ever allowed `Content-Type, Authorization` in
+  `Access-Control-Allow-Headers`. Every cart-touching request since
+  Phase 6 sends a third header, `X-Cart-Token` — missing from that list,
+  the browser's own preflight check blocks the real request before it
+  ever reaches the server, surfacing as a bare "Failed to fetch" with no
+  HTTP status to even inspect. This sat undetected through Phases 6-11
+  because nothing in any of those phases' verification ran a live
+  browser against a live backend at the same time — the first real
+  end-to-end run is what caught it. Fixed by adding the header to the
+  allow-list; nothing else about the middleware changed.
+- **Unexpected server errors were never logged anywhere.** Chasing the
+  fix above surfaced a second, more structural issue: `pkg/response`'s
+  own doc comment for `Error` has always said messages sent to the
+  client are deliberately generic and "details" get "logged separately"
+  — but nothing, in any package, in any phase, ever actually called the
+  logger for one of these. A genuine unexpected failure (a real bug, not
+  a normal validation/not-found/conflict case) produced a safe generic
+  message for the client and *nothing at all* on the server side — not
+  even a stack trace, not even which endpoint. `response.InternalError`
+  is the fix: same generic client-facing message as before, but now the
+  real `err`, the request method, and the path all go through
+  `pkg/logger` first. Every one of the 53 call sites across every
+  package that used to build this generic response by hand now goes
+  through it instead — a mechanical, one-for-one swap, not a rewrite of
+  any handler's actual logic.
+- **Customer login and register didn't exist.** `internal/auth`'s
+  `Register`/`Login` endpoints have been there since Phase 2, and
+  `stores/cart-store.ts`'s own comment already said as much — *"a
+  logged-in customer wouldn't need this at all... but there's no login
+  UI built yet for a customer to actually be logged in through"*. `/login`
+  and `/register` are that missing UI, plus a `customer-auth-store.ts`
+  deliberately separate from staff's `auth-store.ts` (two completely
+  different account systems on the backend — `internal/customers` vs
+  `internal/users` — sharing one frontend store would be an easy way to
+  eventually send a customer's token somewhere only staff should reach).
+  `SiteHeader` now shows "Masuk" or the customer's name accordingly.
+  Deliberately **not** done: merging a guest cart into a customer's
+  account cart on login. The backend already resolves cart identity by
+  customer token when one's present (see `internal/cart`'s own
+  `identity()` handling), so a logged-in customer's *new* cart activity
+  already works correctly — but anything already sitting in a guest
+  cart from before they logged in stays a separate, guest-token cart.
+  A real merge-on-login is its own small feature, not a side effect of
+  adding login itself.
+- **Icons and entrance animations** across `/admin`, `/pos`, and
+  `/inventory` — `lucide-react` was already a dependency (the customer
+  site's header has used it since Phase 5) but nothing built in Phases
+  9-11 used it at all; every nav item, primary action button, and modal
+  now does. Three small shared keyframes in `globals.css`
+  (`animate-fade-in`, `animate-fade-in-up`, `animate-scale-in`) — used
+  for page content, cards, and modal entrances respectively, and turned
+  off entirely under `prefers-reduced-motion`. A branded `app/error.tsx`
+  and `app/not-found.tsx` replace Next.js's default English error/404
+  screens with something that looks like the rest of the site and gives
+  a way back rather than a dead end.
+
 ## Tech stack
 
 **Backend** — Go, Gin, PostgreSQL (pgx), Redis, JWT (Phase 2), WebSocket
@@ -1399,6 +1464,7 @@ satelit-parfume/
 │   │   │   ├── password/     bcrypt hashing
 │   │   │   ├── random/       secure random (JTIs)
 │   │   │   ├── response/     shared {success, message, code, data} envelope
+│   │   │   │                + InternalError, which also logs (post-Phase-11 fix)
 │   │   │   ├── slug/         URL-slug generation (products AND branches)
 │   │   │   ├── database/, logger/
 │   │   │   └── storage/, websocket/   still stubs
@@ -1407,7 +1473,9 @@ satelit-parfume/
 │   │   ├── seeds/            products_verified.csv (real, importable) + dev_seed.sql (fake, dev-only)
 │   │   └── Dockerfile
 │   └── web/                  Next.js frontend
-│       ├── app/               /, /shop, /product/[slug] — customer site;
+│       ├── app/               /, /shop, /product/[slug], /login, /register — customer
+│       │                     site (login/register: post-Phase-11 fix); error.tsx,
+│       │                     not-found.tsx — branded, replacing Next's defaults;
 │       │                     /admin/* — staff dashboard (Phase 9): login,
 │       │                     overview, products, orders, branches, staff;
 │       │                     /pos/* — cashier till (Phase 10): shift open/close,
@@ -1423,8 +1491,10 @@ satelit-parfume/
 │       │                     /inventory's three pages as of Phase 11), ui/ (still empty)
 │       ├── stores/           branch-store.ts (drives which branch a POS or inventory
 │       │                     session is working, since Phase 10/11), cart-store.ts,
-│       │                     auth-store.ts (Phase 9, staff session) — all Zustand +
-│       │                     localStorage, hydration-safe
+│       │                     auth-store.ts (Phase 9, staff session), customer-auth-store.ts
+│       │                     (post-Phase-11 fix, kept separate from auth-store.ts on
+│       │                     purpose — see "Post-Phase-11 fixes and polish") — all
+│       │                     Zustand + localStorage, hydration-safe
 │       ├── hooks/             use-click-outside.ts, use-cart.ts
 │       ├── lib/               utils.ts (cn), format.ts (Rupiah), api-client.ts
 │       └── Dockerfile

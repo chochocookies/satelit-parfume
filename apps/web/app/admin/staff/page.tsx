@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus } from "lucide-react";
 
 import { apiClient, ApiError, type StaffAccount } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -111,8 +112,9 @@ export default function AdminStaffPage() {
         </div>
         <button
           onClick={openCreate}
-          className="rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
+          className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
         >
+          <Plus className="h-4 w-4" />
           Tambah Staf
         </button>
       </div>
@@ -144,7 +146,8 @@ export default function AdminStaffPage() {
                   <td className="px-4 py-3 text-ink-muted">{account.status === "active" ? "Aktif" : "Nonaktif"}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end">
-                      <button onClick={() => openEdit(account)} className="text-accent hover:opacity-80">
+                      <button onClick={() => openEdit(account)} className="flex items-center gap-1 text-accent transition hover:opacity-80">
+                        <Pencil className="h-3.5 w-3.5" />
                         Ubah
                       </button>
                     </div>
@@ -158,7 +161,7 @@ export default function AdminStaffPage() {
 
       {form && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
             <h2 className="font-display text-lg text-ink">{editing ? "Ubah Staf" : "Tambah Staf"}</h2>
 
             <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">

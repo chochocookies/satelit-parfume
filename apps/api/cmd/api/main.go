@@ -534,11 +534,22 @@ func main() {
 // frontend actually sends credentialed requests (Phase 5) — it may need
 // Access-Control-Allow-Credentials and a stricter origin check than a
 // single configured string.
+//
+// Bug fix (found while helping debug a real local run of this repo,
+// after Phase 11): Access-Control-Allow-Headers never included
+// X-Cart-Token, the custom header cartHeaders() (lib/api-client.ts, since
+// Phase 6) attaches to every cart/checkout/POS-checkout request. Any
+// browser sending a non-simple header needs it explicitly allowed here or
+// the preflight fails and the browser blocks the real request — which
+// surfaces to the user as a bare "Failed to fetch", no HTTP status to
+// even inspect. This went uncaught through Phases 6-11 because nothing
+// in any of those phases' verification actually ran a live browser
+// against a live backend at the same time; this is the first real
+// end-to-end run that could have caught it.
 func corsMiddleware(origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		// c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Cart-Token")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)

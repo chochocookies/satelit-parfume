@@ -48,7 +48,7 @@ func (h *Handler) Pay(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "order not found")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load order")
+		response.InternalError(c, err, "could not load order")
 		return
 	}
 	if order.CustomerID != customerID {
@@ -91,7 +91,7 @@ func (h *Handler) GetForOrder(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "no payment has been started for this order yet")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load payment")
+		response.InternalError(c, err, "could not load payment")
 		return
 	}
 	response.OK(c, http.StatusOK, "payment", payment)
@@ -117,7 +117,7 @@ func (h *Handler) AdminPay(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "order not found")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load order")
+		response.InternalError(c, err, "could not load order")
 		return
 	}
 	if order.BranchID != c.Param("id") {

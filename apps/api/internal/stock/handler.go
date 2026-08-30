@@ -36,7 +36,7 @@ func (h *Handler) Receive(c *gin.Context) {
 	}
 	movement, err := h.repo.Receive(c.Request.Context(), c.Param("id"), c.Param("variantId"), req.Quantity, req.Note, callerID(c))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not record stock received")
+		response.InternalError(c, err, "could not record stock received")
 		return
 	}
 	response.OK(c, http.StatusCreated, "stock received", movement)
@@ -55,7 +55,7 @@ func (h *Handler) Adjust(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "NEGATIVE_RESULT", err.Error())
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not adjust stock")
+		response.InternalError(c, err, "could not adjust stock")
 		return
 	}
 	response.OK(c, http.StatusOK, "stock adjusted", movement)
@@ -65,7 +65,7 @@ func (h *Handler) Adjust(c *gin.Context) {
 func (h *Handler) Movements(c *gin.Context) {
 	list, err := h.repo.MovementHistory(c.Request.Context(), c.Param("id"), c.Param("variantId"), queryInt(c, "limit", 50))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load movement history")
+		response.InternalError(c, err, "could not load movement history")
 		return
 	}
 	response.OK(c, http.StatusOK, "movements", list)
@@ -86,7 +86,7 @@ func (h *Handler) CreateTransfer(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "INSUFFICIENT_STOCK", err.Error())
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not create transfer")
+		response.InternalError(c, err, "could not create transfer")
 		return
 	}
 	response.OK(c, http.StatusCreated, "transfer created", transfer)
@@ -96,7 +96,7 @@ func (h *Handler) CreateTransfer(c *gin.Context) {
 func (h *Handler) ListTransfers(c *gin.Context) {
 	list, err := h.repo.ListForBranch(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load transfers")
+		response.InternalError(c, err, "could not load transfers")
 		return
 	}
 	response.OK(c, http.StatusOK, "transfers", list)
@@ -112,7 +112,7 @@ func (h *Handler) GetTransfer(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "transfer not found")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load transfer")
+		response.InternalError(c, err, "could not load transfer")
 		return
 	}
 	response.OK(c, http.StatusOK, "transfer", transfer)
@@ -150,7 +150,7 @@ func respondTransferError(c *gin.Context, err error) {
 	case errors.Is(err, ErrTransferNotPending):
 		response.Error(c, http.StatusConflict, "NOT_PENDING", err.Error())
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not update transfer")
+		response.InternalError(c, err, "could not update transfer")
 	}
 }
 
@@ -164,7 +164,7 @@ func (h *Handler) StartOpname(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "OPNAME_ALREADY_OPEN", err.Error())
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not start stock count")
+		response.InternalError(c, err, "could not start stock count")
 		return
 	}
 	response.OK(c, http.StatusCreated, "stock count started", opname)
@@ -180,7 +180,7 @@ func (h *Handler) CurrentOpname(c *gin.Context) {
 			response.OK(c, http.StatusOK, "no open stock count", nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load current stock count")
+		response.InternalError(c, err, "could not load current stock count")
 		return
 	}
 	response.OK(c, http.StatusOK, "current stock count", opname)
@@ -190,7 +190,7 @@ func (h *Handler) CurrentOpname(c *gin.Context) {
 func (h *Handler) ListOpnames(c *gin.Context) {
 	list, err := h.repo.ListForBranchOpnames(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load stock count history")
+		response.InternalError(c, err, "could not load stock count history")
 		return
 	}
 	response.OK(c, http.StatusOK, "stock counts", list)
@@ -204,7 +204,7 @@ func (h *Handler) GetOpname(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "NOT_FOUND", "stock count not found")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load stock count")
+		response.InternalError(c, err, "could not load stock count")
 		return
 	}
 	response.OK(c, http.StatusOK, "stock count", opname)
@@ -225,7 +225,7 @@ func (h *Handler) CountItem(c *gin.Context) {
 		case errors.Is(err, ErrOpnameNotOpen):
 			response.Error(c, http.StatusConflict, "NOT_OPEN", err.Error())
 		default:
-			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not record count")
+			response.InternalError(c, err, "could not record count")
 		}
 		return
 	}
@@ -247,7 +247,7 @@ func (h *Handler) CompleteOpname(c *gin.Context) {
 		case errors.Is(err, ErrOpnameNotOpen):
 			response.Error(c, http.StatusConflict, "NOT_OPEN", err.Error())
 		default:
-			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not complete stock count")
+			response.InternalError(c, err, "could not complete stock count")
 		}
 		return
 	}

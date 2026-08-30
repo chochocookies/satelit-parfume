@@ -31,7 +31,7 @@ func (h *Handler) Register(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "EMAIL_TAKEN", "an account with this email already exists")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not create account")
+		response.InternalError(c, err, "could not create account")
 		return
 	}
 
@@ -77,7 +77,7 @@ func respondLoginError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidCredentials):
 		response.Error(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "incorrect email or password")
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not log in")
+		response.InternalError(c, err, "could not log in")
 	}
 }
 

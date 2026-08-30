@@ -30,7 +30,7 @@ func (h *Handler) List(c *gin.Context) {
 
 	list, err := h.repo.List(c.Request.Context(), lat, lng)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load branches")
+		response.InternalError(c, err, "could not load branches")
 		return
 	}
 	response.OK(c, http.StatusOK, "branches", list)
@@ -66,7 +66,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	branch, err := h.repo.Create(c.Request.Context(), req)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not create branch — check that the code is unique")
+		response.InternalError(c, err, "could not create branch — check that the code is unique")
 		return
 	}
 	response.OK(c, http.StatusCreated, "branch created", branch)
@@ -98,7 +98,7 @@ func (h *Handler) Delete(c *gin.Context) {
 func (h *Handler) ListStaff(c *gin.Context) {
 	staff, err := h.repo.ListStaff(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load branch staff")
+		response.InternalError(c, err, "could not load branch staff")
 		return
 	}
 	response.OK(c, http.StatusOK, "branch staff", staff)
@@ -112,7 +112,7 @@ func (h *Handler) AssignStaff(c *gin.Context) {
 	}
 
 	if err := h.repo.AssignStaff(c.Request.Context(), c.Param("id"), req.UserID); err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not assign staff — check the user id exists")
+		response.InternalError(c, err, "could not assign staff — check the user id exists")
 		return
 	}
 	response.OK(c, http.StatusOK, "staff assigned", nil)
@@ -120,7 +120,7 @@ func (h *Handler) AssignStaff(c *gin.Context) {
 
 func (h *Handler) UnassignStaff(c *gin.Context) {
 	if err := h.repo.UnassignStaff(c.Request.Context(), c.Param("id"), c.Param("userId")); err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not unassign staff")
+		response.InternalError(c, err, "could not unassign staff")
 		return
 	}
 	response.OK(c, http.StatusOK, "staff unassigned", nil)
@@ -131,5 +131,5 @@ func respondNotFoundOrError(c *gin.Context, err error) {
 		response.Error(c, http.StatusNotFound, "NOT_FOUND", "branch not found")
 		return
 	}
-	response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "something went wrong")
+	response.InternalError(c, err, "something went wrong")
 }

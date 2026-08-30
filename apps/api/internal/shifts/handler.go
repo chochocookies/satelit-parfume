@@ -41,7 +41,7 @@ func (h *Handler) Open(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "SHIFT_ALREADY_OPEN", err.Error())
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not open shift")
+		response.InternalError(c, err, "could not open shift")
 		return
 	}
 	response.OK(c, http.StatusCreated, "shift opened", shift)
@@ -58,7 +58,7 @@ func (h *Handler) Current(c *gin.Context) {
 			response.OK(c, http.StatusOK, "no open shift", nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load current shift")
+		response.InternalError(c, err, "could not load current shift")
 		return
 	}
 	response.OK(c, http.StatusOK, "current shift", shift)
@@ -80,7 +80,7 @@ func (h *Handler) Close(c *gin.Context) {
 		case errors.Is(err, ErrAlreadyClosed):
 			response.Error(c, http.StatusConflict, "ALREADY_CLOSED", err.Error())
 		default:
-			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not close shift")
+			response.InternalError(c, err, "could not close shift")
 		}
 		return
 	}
@@ -91,7 +91,7 @@ func (h *Handler) Close(c *gin.Context) {
 func (h *Handler) List(c *gin.Context) {
 	list, err := h.repo.ListForBranch(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load shift history")
+		response.InternalError(c, err, "could not load shift history")
 		return
 	}
 	response.OK(c, http.StatusOK, "shifts", list)

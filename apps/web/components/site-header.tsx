@@ -3,25 +3,41 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Menu, Search, X } from "lucide-react";
+import { LogOut, Menu, Search, User, X } from "lucide-react";
 
 import { BranchSelector } from "@/components/branch-selector";
 import { CartButton } from "@/components/cart-button";
+import { useCustomerAuthStore } from "@/stores/customer-auth-store";
+import { apiClient } from "@/lib/api-client";
 
-// Deliberately minimal nav: Logo, Shop, search, branch selector, cart.
-// Section 14 lists a fuller set (Collections, Find Your Scent, Wishlist,
-// Account) but those lead to pages/features that don't exist yet
-// (wishlist is Phase 12, account needs a customer-auth UI that hasn't
-// been built) — a nav link to nowhere is worse than no link.
+// Deliberately minimal nav: Logo, Shop, search, branch selector, account,
+// cart. Section 14 lists a fuller set (Collections, Find Your Scent,
+// Wishlist) but those lead to pages that don't exist yet (Phase 12) — a
+// nav link to nowhere is worse than no link. Account now has somewhere
+// real to go: /login and /register (see stores/customer-auth-store.ts).
 export function SiteHeader() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { hasHydrated, customer, refreshToken, clear } = useCustomerAuthStore();
 
   function handleSearch(event: FormEvent) {
     event.preventDefault();
     router.push(query ? `/shop?search=${encodeURIComponent(query)}` : "/shop");
     setMobileOpen(false);
+  }
+
+  async function handleLogout() {
+    if (refreshToken) {
+      try {
+        await apiClient.customerLogout(refreshToken);
+      } catch {
+        // best-effort — the local session clears either way below
+      }
+    }
+    clear();
+    setMobileOpen(false);
+    router.push("/");
   }
 
   return (
@@ -39,7 +55,7 @@ export function SiteHeader() {
 
         <form
           onSubmit={handleSearch}
-          className="ml-auto hidden max-w-xs flex-1 items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 sm:flex"
+          className="ml-auto hidden max-w-xs flex-1 items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 transition focus-within:border-accent sm:flex"
         >
           <Search className="h-4 w-4 shrink-0 text-ink-muted" />
           <input
@@ -54,10 +70,32 @@ export function SiteHeader() {
           <BranchSelector />
         </div>
 
-        {/* Unlike the branch selector, the cart stays visible at every
-            width — it's a single icon+badge, not something that needs
-            the mobile menu's extra room the way a full store list does. */}
+        {/* Account + cart stay visible at every width — small, fixed-size
+            controls, not something that needs the mobile menu's extra
+            room the way a full store list does. */}
         <div className="ml-auto flex items-center gap-3 sm:ml-0">
+          {hasHydrated && (
+            <div className="hidden items-center gap-3 sm:flex">
+              {customer ? (
+                <>
+                  <span className="text-sm text-ink-muted">Halo, {customer.name.split(" ")[0]}</span>
+                  <button
+                    onClick={handleLogout}
+                    aria-label="Keluar"
+                    className="text-ink-muted transition hover:text-ink"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
+                <Link href="/login" className="flex items-center gap-1.5 text-sm text-ink-muted transition hover:text-ink">
+                  <User className="h-4 w-4" />
+                  Masuk
+                </Link>
+              )}
+            </div>
+          )}
+
           <CartButton />
 
           <button
@@ -72,7 +110,7 @@ export function SiteHeader() {
       </div>
 
       {mobileOpen && (
-        <div className="space-y-4 border-t border-line px-6 py-4 sm:hidden">
+        <div className="animate-fade-in-up space-y-4 border-t border-line px-6 py-4 sm:hidden">
           <form
             onSubmit={handleSearch}
             className="flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2"
@@ -89,6 +127,25 @@ export function SiteHeader() {
             Belanja
           </Link>
           <BranchSelector />
+          {hasHydrated &&
+            (customer ? (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-ink-muted">Halo, {customer.name.split(" ")[0]}</span>
+                <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-ink">
+                  <LogOut className="h-4 w-4" />
+                  Keluar
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="flex items-center gap-1.5 text-sm text-ink"
+                onClick={() => setMobileOpen(false)}
+              >
+                <User className="h-4 w-4" />
+                Masuk
+              </Link>
+            ))}
         </div>
       )}
     </header>

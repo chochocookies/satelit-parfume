@@ -22,7 +22,7 @@ func NewHandler(repo *Repository) *Handler {
 func (h *Handler) ListForBranch(c *gin.Context) {
 	items, err := h.repo.ListForBranch(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load inventory")
+		response.InternalError(c, err, "could not load inventory")
 		return
 	}
 	response.OK(c, http.StatusOK, "branch inventory", items)
@@ -38,7 +38,7 @@ func (h *Handler) SetStock(c *gin.Context) {
 
 	item, err := h.repo.SetStock(c.Request.Context(), c.Param("id"), c.Param("variantId"), req)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not set stock — check the variant id exists")
+		response.InternalError(c, err, "could not set stock — check the variant id exists")
 		return
 	}
 	response.OK(c, http.StatusOK, "stock updated", item)

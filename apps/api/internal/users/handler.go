@@ -24,7 +24,7 @@ func NewHandler(repo *Repository) *Handler {
 func (h *Handler) List(c *gin.Context) {
 	list, err := h.repo.List(c.Request.Context())
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load staff accounts")
+		response.InternalError(c, err, "could not load staff accounts")
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	hash, err := password.Hash(req.Password)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not create staff account")
+		response.InternalError(c, err, "could not create staff account")
 		return
 	}
 
@@ -115,7 +115,7 @@ func respondLookupError(c *gin.Context, err error) {
 		response.Error(c, http.StatusNotFound, "NOT_FOUND", "staff account not found")
 		return
 	}
-	response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load staff account")
+	response.InternalError(c, err, "could not load staff account")
 }
 
 func respondUpsertError(c *gin.Context, err error) {
@@ -127,7 +127,7 @@ func respondUpsertError(c *gin.Context, err error) {
 	case errors.Is(err, ErrUnknownRole):
 		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not save staff account")
+		response.InternalError(c, err, "could not save staff account")
 	}
 }
 

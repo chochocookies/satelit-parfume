@@ -22,7 +22,7 @@ func NewHandler(repo *Repository) *Handler {
 func (h *Handler) Stats(c *gin.Context) {
 	stats, err := h.repo.Stats(c.Request.Context())
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load dashboard stats")
+		response.InternalError(c, err, "could not load dashboard stats")
 		return
 	}
 	response.OK(c, http.StatusOK, "dashboard stats", stats)

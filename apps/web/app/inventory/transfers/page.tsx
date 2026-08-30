@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, CheckCircle2, Plus, XCircle } from "lucide-react";
 
 import { apiClient, ApiError, type Branch, type ProductListItem, type StockTransfer, type TransferItem } from "@/lib/api-client";
 import { useBranchStore } from "@/stores/branch-store";
@@ -73,8 +74,9 @@ function TransfersWorkspace({ branchId, branchName }: { branchId: string; branch
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
+          className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90"
         >
+          <Plus className="h-4 w-4" />
           Buat Transfer
         </button>
       </div>
@@ -88,7 +90,8 @@ function TransfersWorkspace({ branchId, branchName }: { branchId: string; branch
             return (
               <div key={t.id} className="rounded-2xl border border-line bg-surface p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-ink">
+                  <p className="flex items-center gap-1.5 text-sm text-ink">
+                    <ArrowRight className={`h-3.5 w-3.5 text-ink-muted ${isOutgoing ? "" : "rotate-180"}`} aria-hidden="true" />
                     {isOutgoing ? "Ke" : "Dari"} <span className="font-medium">{branchName2(isOutgoing ? t.to_branch_id : t.from_branch_id)}</span>
                   </p>
                   <TransferStatusBadge status={t.status} />
@@ -106,8 +109,9 @@ function TransfersWorkspace({ branchId, branchName }: { branchId: string; branch
                       <button
                         onClick={() => completeMutation.mutate(t.id)}
                         disabled={completeMutation.isPending}
-                        className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-40"
+                        className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-40"
                       >
+                        <CheckCircle2 className="h-4 w-4" />
                         Terima Transfer
                       </button>
                     )}
@@ -115,8 +119,9 @@ function TransfersWorkspace({ branchId, branchName }: { branchId: string; branch
                       <button
                         onClick={() => cancelMutation.mutate(t.id)}
                         disabled={cancelMutation.isPending}
-                        className="rounded-full border border-line px-4 py-2 text-sm text-ink disabled:opacity-40"
+                        className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent disabled:opacity-40"
                       >
+                        <XCircle className="h-4 w-4" />
                         Batalkan
                       </button>
                     )}
@@ -196,7 +201,7 @@ function CreateTransferModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <h2 className="font-display text-lg text-ink">Buat Transfer Stok</h2>
 
         <div className="mt-4 flex flex-col gap-3">

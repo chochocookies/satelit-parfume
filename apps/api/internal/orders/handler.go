@@ -67,7 +67,7 @@ func (h *Handler) POSCheckout(c *gin.Context) {
 			response.Error(c, http.StatusConflict, "NO_OPEN_SHIFT", "open a shift before ringing up a sale")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load your shift")
+		response.InternalError(c, err, "could not load your shift")
 		return
 	}
 	if shift.BranchID != c.Param("id") {
@@ -108,7 +108,7 @@ func respondCheckoutError(c *gin.Context, err error) {
 	case errors.Is(err, inventory.ErrInsufficientStock):
 		response.Error(c, http.StatusConflict, "INSUFFICIENT_STOCK", err.Error())
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "checkout failed")
+		response.InternalError(c, err, "checkout failed")
 	}
 }
 
@@ -133,7 +133,7 @@ func (h *Handler) ListMine(c *gin.Context) {
 
 	list, err := h.service.ListForCustomer(c.Request.Context(), customerID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load orders")
+		response.InternalError(c, err, "could not load orders")
 		return
 	}
 	response.OK(c, http.StatusOK, "orders", list)
@@ -204,7 +204,7 @@ func respondOrderLookupError(c *gin.Context, err error) {
 		response.Error(c, http.StatusNotFound, "NOT_FOUND", "order not found")
 		return
 	}
-	response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load order")
+	response.InternalError(c, err, "could not load order")
 }
 
 // ── Staff-facing, branch-scoped (mounted under branches.RequireBranchAccess
@@ -213,7 +213,7 @@ func respondOrderLookupError(c *gin.Context, err error) {
 func (h *Handler) ListForBranch(c *gin.Context) {
 	list, err := h.service.ListForBranch(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load orders")
+		response.InternalError(c, err, "could not load orders")
 		return
 	}
 	response.OK(c, http.StatusOK, "branch orders", list)
@@ -277,7 +277,7 @@ func respondTransitionError(c *gin.Context, err error) {
 	case errors.Is(err, ErrNotFound):
 		response.Error(c, http.StatusConflict, "ALREADY_CHANGED", "order status changed since it was last read — reload and try again")
 	default:
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "status update failed")
+		response.InternalError(c, err, "status update failed")
 	}
 }
 
@@ -301,7 +301,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 
 	result, err := h.service.ListAdmin(c.Request.Context(), filter)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load orders")
+		response.InternalError(c, err, "could not load orders")
 		return
 	}
 	response.OK(c, http.StatusOK, "orders", result)
@@ -367,7 +367,7 @@ func queryInt(c *gin.Context, key string, fallback int) int {
 func (h *Handler) SweepExpired(c *gin.Context) {
 	count, err := h.service.SweepExpired(c.Request.Context(), 100)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "sweep failed")
+		response.InternalError(c, err, "sweep failed")
 		return
 	}
 	response.OK(c, http.StatusOK, "sweep complete", gin.H{"expired": count})

@@ -20,7 +20,7 @@ func NewHandler(repo *Repository) *Handler {
 func (h *Handler) List(c *gin.Context) {
 	list, err := h.repo.List(c.Request.Context())
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load categories")
+		response.InternalError(c, err, "could not load categories")
 		return
 	}
 	response.OK(c, http.StatusOK, "categories", list)

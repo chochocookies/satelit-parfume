@@ -34,7 +34,7 @@ func RequireBranchAccess(repo *Repository) gin.HandlerFunc {
 
 		assigned, err := repo.IsStaffAssignedToBranch(c.Request.Context(), userID, branchID)
 		if err != nil {
-			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not verify branch access")
+			response.InternalError(c, err, "could not verify branch access")
 			c.Abort()
 			return
 		}

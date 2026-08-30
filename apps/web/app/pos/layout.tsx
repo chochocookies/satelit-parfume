@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LayoutDashboard, Loader2, LogOut, Warehouse } from "lucide-react";
 
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -47,7 +48,7 @@ export default function PosLayout({ children }: { children: React.ReactNode }) {
   if (!hasHydrated || !checked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-sm text-ink-muted">Memuat...</p>
+        <Loader2 className="h-5 w-5 animate-spin text-ink-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -77,23 +78,26 @@ export default function PosLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-ink-muted sm:inline">{subject?.name}</span>
-          <Link href="/inventory" className="text-sm text-accent hover:opacity-80">
-            Inventaris
+          <Link href="/inventory" className="flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80">
+            <Warehouse className="h-4 w-4" />
+            <span className="hidden sm:inline">Inventaris</span>
           </Link>
           {(subject?.roles.includes("SUPER_ADMIN") || subject?.roles.includes("ADMIN")) && (
-            <Link href="/admin" className="text-sm text-accent hover:opacity-80">
-              Dashboard
+            <Link href="/admin" className="flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80">
+              <LayoutDashboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
           )}
           <button
             onClick={handleLogout}
-            className="rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent"
+            className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent"
           >
+            <LogOut className="h-4 w-4" />
             Keluar
           </button>
         </div>
       </header>
-      <main className="flex-1 p-4 sm:p-6">{children}</main>
+      <main className="flex-1 animate-fade-in p-4 sm:p-6">{children}</main>
     </div>
   );
 }
