@@ -6,9 +6,11 @@
 package response
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"satelit-parfume-api/pkg/logger"
 )
@@ -43,7 +45,22 @@ func Error(c *gin.Context, status int, code, message string) {
 // only ever sees the same safe, generic clientMessage Error would have
 // sent — nothing about what the client receives changes, only what the
 // operator can now see.
+//
+// When err is a Postgres error, its own Error() string is deliberately
+// thin — pgconn.PgError.Error() is just "SEVERITY: message (SQLSTATE
+// code)" and never includes Detail, which is where Postgres actually
+// names the offending value (e.g. "Key (product_variant_id)=(...) is not
+// present in table..." for a foreign-key violation). Logging Detail and
+// ConstraintName alongside the plain error, when they're present, is the
+// difference between a log line that says *that* something violated a
+// constraint and one that says *which value* did.
 func InternalError(c *gin.Context, err error, clientMessage string) {
-	logger.Errorf("%s %s -> %v", c.Request.Method, c.Request.URL.Path, err)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Detail != "" {
+		logger.Errorf("%s %s -> %v | detail: %s | constraint: %s",
+			c.Request.Method, c.Request.URL.Path, err, pgErr.Detail, pgErr.ConstraintName)
+	} else {
+		logger.Errorf("%s %s -> %v", c.Request.Method, c.Request.URL.Path, err)
+	}
 	c.JSON(http.StatusInternalServerError, Envelope{Success: false, Message: clientMessage, Code: "INTERNAL_ERROR"})
 }

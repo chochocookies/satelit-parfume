@@ -174,14 +174,32 @@ func (r *Repository) ExistingQuantity(ctx context.Context, cartID, variantID str
 	return qty, nil
 }
 
-// UpsertItem adds quantity to any existing line for this variant rather
-// than replacing it. unitPrice only takes effect on first insert — an
-// existing line keeps its original snapshot price; adding more of
-// something already in the cart doesn't re-price the earlier units to
-// today's price.
+// UpsertItem inserts a new cart line, or adds to an existing one's
+// quantity if this exact (cart, variant) pair is already in the cart —
+// see the ON CONFLICT clause, matching cart_items' own UNIQUE (cart_id,
+// product_variant_id) constraint (migration 000005_cart). unitPrice only
+// takes effect on first insert — an existing line keeps its original
+// snapshot price; adding more of something already in the cart doesn't
+// re-price the earlier units to today's price.
+//
+// Bug fix (found while helping debug a real "every add-to-cart fails
+// with a foreign-key violation" report, after Phase 11): this INSERT's
+// column list read (cart_id, product_variant_id, branch_id, ...) while
+// its VALUES were bound positionally as (cartID, branchID, variantID,
+// ...) — branchID and variantID were silently swapped into each other's
+// columns. Every add-to-cart call sent a real, valid variant id, and it
+// landed in the branch_id column instead of product_variant_id; a real
+// branch id landed in product_variant_id, which almost never happens to
+// also be a valid row in product_variants, so the INSERT failed its own
+// foreign-key check on a value that was never actually wrong — just in
+// the wrong column. Fixed by reordering the column list to match the
+// existing positional args instead of the other way around: cartID,
+// branchID, and variantID here are unchanged from every existing call
+// site (internal/cart/service.go), so nothing that calls this needed to
+// change.
 func (r *Repository) UpsertItem(ctx context.Context, cartID, branchID, variantID string, quantity int, unitPrice int64) error {
 	const q = `
-		INSERT INTO cart_items (cart_id, product_variant_id, branch_id, quantity, unit_price)
+		INSERT INTO cart_items (cart_id, branch_id, product_variant_id, quantity, unit_price)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (cart_id, product_variant_id) DO UPDATE SET
 			quantity = cart_items.quantity + EXCLUDED.quantity,

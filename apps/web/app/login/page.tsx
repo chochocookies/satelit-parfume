@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn } from "lucide-react";
 
 import { apiClient, ApiError } from "@/lib/api-client";
 import { useCustomerAuthStore } from "@/stores/customer-auth-store";
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const setSession = useCustomerAuthStore((state) => state.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -61,16 +62,26 @@ export default function LoginPage() {
             <label htmlFor="password" className="text-sm text-ink-muted">
               Kata Sandi
             </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-full border border-line bg-background px-4 py-2 text-sm text-ink placeholder:text-ink-muted transition focus:border-accent focus:outline-none"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-full border border-line bg-background px-4 py-2 pr-11 text-sm text-ink placeholder:text-ink-muted transition focus:border-accent focus:outline-none"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                className="absolute inset-y-0 right-3 flex items-center text-ink-muted transition hover:text-ink"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -88,6 +99,12 @@ export default function LoginPage() {
           Belum punya akun?{" "}
           <Link href="/register" className="text-accent transition hover:opacity-80">
             Daftar
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-xs text-ink-muted">
+          Staf toko?{" "}
+          <Link href="/admin/login" className="text-accent transition hover:opacity-80">
+            Masuk di sini
           </Link>
         </p>
       </div>

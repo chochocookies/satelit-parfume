@@ -701,6 +701,28 @@ reported what broke. Landing those fixes here, in the exact order they
 came up, rather than folding them silently into Phase 11's own section
 above:
 
+- **Adding anything to a cart failed 100% of the time, with a foreign-key
+  violation.** The real bug, found only once `response.InternalError`
+  (below) made it visible in the logs at all:
+  `cart.Repository.UpsertItem`'s `INSERT INTO cart_items` listed its
+  columns as `(cart_id, product_variant_id, branch_id, ...)` but bound
+  its values positionally as `(cartID, branchID, variantID, ...)` — the
+  branch id and variant id were silently swapped into each other's
+  columns. Every request sent a perfectly real, valid variant id; it
+  landed in the `branch_id` column, and a real branch id landed in
+  `product_variant_id`, which is essentially never also a valid row in
+  `product_variants` — so the insert failed its own foreign-key check on
+  a value that was never wrong, just filed under the wrong column. This
+  was in the original Phase 6 code, sat there through Phases 7-11
+  untouched, and reproduced 100% of the time with any product, in any
+  environment — nothing about it was environment-specific, despite how
+  it first presented. Fixed by reordering the column list to match the
+  existing positional args (not the other way around), so every existing
+  caller of `UpsertItem` needed zero changes. Confirmed this was the
+  *only* instance of this bug shape: every other multi-column `INSERT`
+  in the codebase (33 total, across all 12 packages that write to the
+  database) was individually checked column-by-column against its own
+  positional args.
 - **CORS was missing `X-Cart-Token`.** `corsMiddleware` (Phase 2) only
   ever allowed `Content-Type, Authorization` in
   `Access-Control-Allow-Headers`. Every cart-touching request since
@@ -726,7 +748,17 @@ above:
   `pkg/logger` first. Every one of the 53 call sites across every
   package that used to build this generic response by hand now goes
   through it instead — a mechanical, one-for-one swap, not a rewrite of
-  any handler's actual logic.
+  any handler's actual logic. This is exactly what surfaced the
+  foreign-key bug above in the first place — before it existed, that
+  failure produced nothing to find at all. Extended once more the same
+  session: a `pgconn.PgError`'s own `.Error()` string is deliberately
+  thin (`"ERROR: <message> (SQLSTATE <code>)"`), never including
+  `.Detail` — which is where Postgres actually names the offending value
+  (`"Key (product_variant_id)=(...) is not present in table..."` for
+  exactly this kind of foreign-key violation). `InternalError` now logs
+  `.Detail` and `.ConstraintName` too when the error is a `PgError`, so
+  the *next* constraint violation shows which value and which constraint
+  on the first try, not just that something violated something.
 - **Customer login and register didn't exist.** `internal/auth`'s
   `Register`/`Login` endpoints have been there since Phase 2, and
   `stores/cart-store.ts`'s own comment already said as much — *"a
@@ -746,6 +778,13 @@ above:
   cart from before they logged in stays a separate, guest-token cart.
   A real merge-on-login is its own small feature, not a side effect of
   adding login itself.
+- **Login UX**: a show/hide toggle on every password field (customer
+  login, register, and staff `/admin/login`) — there wasn't one anywhere
+  before. `/login` and `/admin/login` now cross-link to each other in
+  small print ("Staf toko? Masuk di sini" / "Pelanggan? Masuk di sini"),
+  so a staff member landing on the customer login isn't stuck, without
+  making the staff login prominent on the customer-facing page — it's a
+  quiet link, not a second big button competing with "Masuk"/"Daftar".
 - **Icons and entrance animations** across `/admin`, `/pos`, and
   `/inventory` — `lucide-react` was already a dependency (the customer
   site's header has used it since Phase 5) but nothing built in Phases

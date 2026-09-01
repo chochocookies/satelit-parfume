@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 
 import { apiClient, ApiError } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -11,6 +13,7 @@ export default function AdminLoginPage() {
   const setSession = useAuthStore((state) => state.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,8 +38,11 @@ export default function AdminLoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-xl">
-        <h1 className="font-display text-2xl text-ink">Admin Satelit Parfume</h1>
+      <div className="animate-fade-in-up w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-xl">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-accent" aria-hidden="true" />
+          <h1 className="font-display text-2xl text-ink">Admin Satelit Parfume</h1>
+        </div>
         <p className="mt-1 text-sm text-ink-muted">Masuk dengan akun staf untuk mengelola toko.</p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
@@ -51,7 +57,7 @@ export default function AdminLoginPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-full border border-line bg-background px-4 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
+              className="rounded-full border border-line bg-background px-4 py-2 text-sm text-ink placeholder:text-ink-muted transition focus:border-accent focus:outline-none"
               placeholder="nama@satelitparfume.id"
             />
           </div>
@@ -60,16 +66,26 @@ export default function AdminLoginPage() {
             <label htmlFor="password" className="text-sm text-ink-muted">
               Kata sandi
             </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-full border border-line bg-background px-4 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-full border border-line bg-background px-4 py-2 pr-11 text-sm text-ink placeholder:text-ink-muted transition focus:border-accent focus:outline-none"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                className="absolute inset-y-0 right-3 flex items-center text-ink-muted transition hover:text-ink"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -82,6 +98,13 @@ export default function AdminLoginPage() {
             {submitting ? "Memproses..." : "Masuk"}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-xs text-ink-muted">
+          Pelanggan?{" "}
+          <Link href="/login" className="text-accent transition hover:opacity-80">
+            Masuk di sini
+          </Link>
+        </p>
       </div>
     </div>
   );
