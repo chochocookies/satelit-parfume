@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 
-import { apiClient, ApiError, type Branch, type Order, type ProductListItem, type Shift } from "@/lib/api-client";
+import { apiClient, ApiError, type Branch, type Category, type Order, type Payment, type ProductListItem, type Shift } from "@/lib/api-client";
 import { formatRupiah } from "@/lib/format";
 import { useBranchStore } from "@/stores/branch-store";
 
@@ -121,7 +121,7 @@ function OpenShiftForm({ branchId, branchName }: { branchId: string; branchName:
 
 type SaleStage =
   | { name: "cart" }
-  | { name: "qris-wait"; order: Order }
+  | { name: "qris-wait"; order: Order; payment: Payment }
   | { name: "receipt"; order: Order }
   | { name: "close" }
   | { name: "close-summary"; shift: Shift };
@@ -131,6 +131,11 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
   const [cartToken, setCartToken] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
+  // "" (Semua) plus every category slug from GET /api/v1/categories —
+  // same slug convention ShopPageClient already filters by, so a
+  // cashier and a customer never see the catalog grouped two different
+  // ways.
+  const [activeCategory, setActiveCategory] = useState("");
   const [stage, setStage] = useState<SaleStage>({ name: "cart" });
   const [error, setError] = useState<string | null>(null);
 
@@ -140,10 +145,21 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
     enabled: cartToken !== null,
   });
 
-  const searchQuery = useQuery({
-    queryKey: ["pos", "product-search", branchId, searchSubmitted],
-    queryFn: () => apiClient.listProducts({ search: searchSubmitted, branch: branchId, limit: 8 }),
-    enabled: searchSubmitted.length > 0,
+  const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: apiClient.listCategories });
+
+  // Browsable by default — no longer gated behind typing a search term
+  // first. A cashier ringing up a walk-in needs to tap through what's
+  // in front of them, the same way the customer-facing shop already
+  // works; search narrows it further when they DO know what they want.
+  const productsQuery = useQuery({
+    queryKey: ["pos", "products", branchId, searchSubmitted, activeCategory],
+    queryFn: () =>
+      apiClient.listProducts({
+        search: searchSubmitted || undefined,
+        category: activeCategory || undefined,
+        branch: branchId,
+        limit: 24,
+      }),
   });
 
   function syncCartToken(token?: string) {
@@ -194,8 +210,8 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
         return;
       }
       try {
-        await apiClient.posPay(branchId, order.id, "SP");
-        setStage({ name: "qris-wait", order });
+        const payment = await apiClient.posPay(branchId, order.id, "SP");
+        setStage({ name: "qris-wait", order, payment });
         setCartToken(null);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Gagal membuat pembayaran QRIS.");
@@ -209,6 +225,7 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
       <QrisWaitScreen
         branchId={branchId}
         order={stage.order}
+        payment={stage.payment}
         onPaid={(order) => setStage({ name: "receipt", order })}
         onCancel={() => setStage({ name: "cart" })}
       />
@@ -266,33 +283,83 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama produk atau SKU..."
-            className="flex-1 rounded-full border border-line bg-background px-4 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
+            className="flex-1 rounded-full border border-line bg-background px-4 py-3 text-base text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
           />
-          <button type="submit" className="rounded-full border border-line px-4 py-2 text-sm text-ink">
+          <button
+            type="submit"
+            className="rounded-full border border-line px-5 py-3 text-sm font-medium text-ink active:scale-95"
+          >
             Cari
           </button>
         </form>
 
-        {searchQuery.isLoading && <p className="text-sm text-ink-muted">Mencari...</p>}
-        {searchQuery.data && (
-          <div className="flex flex-col gap-2">
-            {searchQuery.data.items.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => addItemMutation.mutate(item)}
-                disabled={addItemMutation.isPending}
-                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-3 text-left transition hover:border-accent disabled:opacity-50"
-              >
-                <div>
-                  <p className="text-sm text-ink">{item.name}</p>
-                  <p className="text-xs text-ink-muted">
-                    {item.brand?.name ?? "-"} · Stok: {item.branch_stock ?? "-"}
-                  </p>
-                </div>
-                <span className="text-sm text-ink">{formatRupiah(item.price_from)}</span>
-              </button>
-            ))}
-            {searchQuery.data.items.length === 0 && <p className="text-sm text-ink-muted">Tidak ada produk ditemukan.</p>}
+        {/* Category pills — "Semua" plus every real category, so a
+            cashier browses by tapping instead of having to know what to
+            type. Horizontally scrollable rather than wrapping: on a
+            tablet-width touchscreen a scrolling row keeps every pill at
+            a consistent, thumb-sized target instead of shrinking to fit. */}
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          <button
+            onClick={() => setActiveCategory("")}
+            className={`shrink-0 rounded-full border px-4 py-2.5 text-sm font-medium transition active:scale-95 ${
+              activeCategory === ""
+                ? "border-accent bg-accent text-background"
+                : "border-line bg-surface text-ink-muted hover:border-accent/50"
+            }`}
+          >
+            Semua
+          </button>
+          {categoriesQuery.data?.map((c: Category) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveCategory(c.slug)}
+              className={`shrink-0 rounded-full border px-4 py-2.5 text-sm font-medium transition active:scale-95 ${
+                activeCategory === c.slug
+                  ? "border-accent bg-accent text-background"
+                  : "border-line bg-surface text-ink-muted hover:border-accent/50"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+
+        {productsQuery.isLoading && <p className="text-sm text-ink-muted">Memuat produk...</p>}
+        {productsQuery.data && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {productsQuery.data.items.map((item) => {
+              const outOfStock = (item.branch_stock ?? 0) <= 0;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => addItemMutation.mutate(item)}
+                  disabled={addItemMutation.isPending || outOfStock}
+                  className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface text-left transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <div className="flex aspect-square items-center justify-center overflow-hidden bg-background">
+                    {item.primary_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.primary_image_url} alt={item.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-2xl text-ink-muted">🧴</span>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-0.5 p-3">
+                    <p className="line-clamp-2 text-sm text-ink">{item.name}</p>
+                    <p className="text-xs text-ink-muted">{item.brand?.name ?? "-"}</p>
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <span className="text-sm font-medium text-accent">{formatRupiah(item.price_from)}</span>
+                      <span className={`text-xs ${outOfStock ? "text-red-400" : "text-ink-muted"}`}>
+                        {outOfStock ? "Habis" : `Stok ${item.branch_stock ?? "-"}`}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {productsQuery.data.items.length === 0 && (
+              <p className="col-span-full py-6 text-center text-sm text-ink-muted">Tidak ada produk ditemukan.</p>
+            )}
           </div>
         )}
 
@@ -304,22 +371,22 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
 
         <div className="flex flex-col divide-y divide-line">
           {cart?.items.map((line) => (
-            <div key={line.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+            <div key={line.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-ink">{line.product_name}</p>
                 <p className="text-xs text-ink-muted">{formatRupiah(line.unit_price)}</p>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => updateItemMutation.mutate({ itemId: line.id, quantity: Math.max(0, line.quantity - 1) })}
-                  className="h-6 w-6 rounded-full border border-line text-ink"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-base text-ink active:scale-90"
                 >
                   −
                 </button>
                 <span className="w-6 text-center text-ink">{line.quantity}</span>
                 <button
                   onClick={() => updateItemMutation.mutate({ itemId: line.id, quantity: line.quantity + 1 })}
-                  className="h-6 w-6 rounded-full border border-line text-ink"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-base text-ink active:scale-90"
                 >
                   +
                 </button>
@@ -341,14 +408,14 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
           <button
             disabled={!cart || cart.items.length === 0 || checkoutMutation.isPending}
             onClick={() => checkoutMutation.mutate("cash")}
-            className="rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-40"
+            className="rounded-full bg-accent px-4 py-3.5 text-base font-medium text-background transition hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             {checkoutMutation.isPending ? "Memproses..." : "Bayar Tunai"}
           </button>
           <button
             disabled={!cart || cart.items.length === 0 || checkoutMutation.isPending}
             onClick={() => checkoutMutation.mutate("qris")}
-            className="rounded-full border border-accent px-4 py-2.5 text-sm font-medium text-accent transition hover:bg-accent/10 disabled:opacity-40"
+            className="rounded-full border border-accent px-4 py-3.5 text-base font-medium text-accent transition hover:bg-accent/10 active:scale-[0.98] disabled:opacity-40"
           >
             Bayar QRIS
           </button>
@@ -361,11 +428,13 @@ function SaleScreen({ branchId, branchName, shift }: { branchId: string; branchN
 function QrisWaitScreen({
   branchId,
   order,
+  payment,
   onPaid,
   onCancel,
 }: {
   branchId: string;
   order: Order;
+  payment: Payment;
   onPaid: (order: Order) => void;
   onCancel: () => void;
 }) {
@@ -394,7 +463,12 @@ function QrisWaitScreen({
         Total <span className="text-ink">{formatRupiah(order.total)}</span> — {order.order_number}
       </p>
       <div className="rounded-2xl border border-line bg-white p-4">
-        <QRCodeSVG value={order.order_number} size={220} />
+        {/* payment.qr_string is Duitku's actual QRIS payload — what a
+            real payment app needs to scan-and-pay. Falling back to the
+            order number would render *something*, but it's not a valid
+            QRIS code and a cashier scanning it against a real wallet
+            app would only ever get a "can't read this" error. */}
+        <QRCodeSVG value={payment.qr_string || order.order_number} size={220} />
       </div>
       <p className="text-sm text-ink-muted">Menunggu konfirmasi pembayaran...</p>
       <button onClick={onCancel} className="rounded-full border border-line px-4 py-2 text-sm text-ink">

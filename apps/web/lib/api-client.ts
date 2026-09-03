@@ -238,6 +238,14 @@ export type CheckoutRequest = {
   order_type: "pickup" | "delivery";
   guest_name?: string;
   guest_phone?: string;
+  // guest_email is optional for pay-at-counter (Phase 7's original
+  // scope), but required in practice the moment "pay online now" is
+  // chosen — Duitku's classic API needs an email and internal/payments'
+  // CreatePaymentForOrder reads it straight from order.GuestEmail, for
+  // a logged-in customer's order exactly the same as a guest's (there's
+  // no separate lookup against the customer's account email). See
+  // CartPanel's payment-method step.
+  guest_email?: string;
   recipient_name?: string;
   recipient_phone?: string;
   address_line?: string;
@@ -314,6 +322,58 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       const refreshed = await tryRefresh();
+      if (refreshed) {
+        return request<T>(path, {
+          ...init,
+          headers: { ...authHeaders(refreshed), ...init?.headers },
+        });
+      }
+    }
+    throw err;
+  }
+}
+
+// ── Customer-authenticated requests ──────────────────────────────────
+//
+// customerRequest is adminRequest's customer-side twin: same Bearer +
+// one-retry-on-401 shape, but reading/writing stores/customer-auth-store.ts
+// instead of stores/auth-store.ts (see that store's own comment on why
+// customer and staff sessions are deliberately never shared). Both
+// refresh through the same POST /api/v1/auth/refresh — internal/auth's
+// Refresh is subject-agnostic, keyed off whatever subject_type/subject_id
+// were encoded in the refresh token itself at issue time, so there's no
+// separate customer refresh route to call.
+async function tryCustomerRefresh(): Promise<string | null> {
+  const { useCustomerAuthStore } = await import("@/stores/customer-auth-store");
+  const { refreshToken, customer } = useCustomerAuthStore.getState();
+  if (!refreshToken || !customer) {
+    return null;
+  }
+  try {
+    const tokens = await request<TokenPair>("/api/v1/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    useCustomerAuthStore.getState().setSession(tokens.access_token, tokens.refresh_token, customer);
+    return tokens.access_token;
+  } catch {
+    useCustomerAuthStore.getState().clear();
+    return null;
+  }
+}
+
+async function customerRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const { useCustomerAuthStore } = await import("@/stores/customer-auth-store");
+  const { accessToken } = useCustomerAuthStore.getState();
+
+  try {
+    return await request<T>(path, {
+      ...init,
+      headers: { ...authHeaders(accessToken), ...init?.headers },
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      const refreshed = await tryCustomerRefresh();
       if (refreshed) {
         return request<T>(path, {
           ...init,
@@ -614,12 +674,36 @@ export const apiClient = {
   clearCart: (cartToken: string | null) =>
     request<null>("/api/v1/cart", { method: "DELETE", headers: cartHeaders(cartToken) }),
 
-  checkout: (cartToken: string | null, req: CheckoutRequest) =>
+  // checkout takes an optional customerAccessToken on top of the cart
+  // token: POST /orders is mounted behind OptionalAuth (see main.go), so
+  // when a customer is logged in, sending both lets the backend's own
+  // identity() prefer the authenticated customer over the cart's guest
+  // session — the resulting order gets a real customer_id instead of
+  // guest_name/guest_phone, which is what makes it eligible for
+  // POST /orders/:id/pay afterward (that route requires a customer,
+  // full stop — see internal/payments' Handler.Pay). Sending the cart
+  // token alongside is harmless either way: identity() only falls back
+  // to it when there's no authenticated subject.
+  checkout: (cartToken: string | null, req: CheckoutRequest, customerAccessToken?: string | null) =>
     request<Order>("/api/v1/orders", {
       method: "POST",
-      headers: cartHeaders(cartToken),
+      headers: { ...cartHeaders(cartToken), ...authHeaders(customerAccessToken ?? null) },
       body: JSON.stringify(req),
     }),
+
+  // payOrder/getOrderPayment back the customer-facing online-payment
+  // step (Phase 8's backend, previously with no frontend — see the root
+  // README's "What Phase 8 adds"). Both require a logged-in customer
+  // (ordersGroup.Use(auth.RequireAuth) in main.go) — there's no guest
+  // equivalent, matching Duitku's email requirement that guest checkout
+  // was never extended to collect until now.
+  payOrder: (orderId: string, paymentMethod: string) =>
+    customerRequest<Payment>(`/api/v1/orders/${orderId}/pay`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: paymentMethod }),
+    }),
+
+  getOrderPayment: (orderId: string) => customerRequest<Payment>(`/api/v1/orders/${orderId}/payment`),
 
   // Auth
   staffLogin: (email: string, password: string) =>

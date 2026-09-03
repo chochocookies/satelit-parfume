@@ -121,7 +121,7 @@ type CreateOrderItemParams struct {
 func (r *Repository) CreateOrderItem(ctx context.Context, tx pgx.Tx, p CreateOrderItemParams) error {
 	const q = `
 		INSERT INTO order_items (order_id, product_variant_id, branch_id, product_name, variant_name, sku, unit_price, quantity, subtotal)
-		VALUES ($1, NULLIF($2,''), $3, $4, $5, NULLIF($6,''), $7, $8, $9)
+		VALUES ($1, NULLIF($2,'')::uuid, $3, $4, $5, NULLIF($6,''), $7, $8, $9)
 	`
 	_, err := tx.Exec(ctx, q,
 		p.OrderID, p.ProductVariantID, p.BranchID, p.ProductName, p.VariantName, p.SKU,
