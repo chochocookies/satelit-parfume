@@ -27,8 +27,27 @@ func NewService(repo *Repository, inventoryRepo *inventory.Repository) *Service 
 // a token that no longer matches anything — stale localStorage, wiped
 // data) gets a brand new one; the caller is responsible for persisting
 // the SessionToken that comes back on it.
+//
+// When identity carries both a CustomerID and a SessionToken — a
+// customer who added items before logging in, tracked under the guest
+// X-Cart-Token the whole time — the guest cart behind that token is
+// folded into the customer's own cart first. Without this, a customer
+// cart is always found-or-created by CustomerID alone, and a first-time
+// customer's own cart is *always* freshly created and therefore empty:
+// their items, added and still sitting under the old guest token, would
+// simply never be looked at again. Checkout is where this mattered in
+// practice — a checkout attempt right after logging in mid-flow got
+// ErrEmptyCart from what looked, to the person checking out, like a
+// cart that had items in it seconds earlier.
 func (s *Service) resolve(ctx context.Context, identity Identity) (*shell, error) {
 	if identity.CustomerID != "" {
+		if identity.SessionToken != "" {
+			// Best-effort: a hiccup while merging shouldn't block a
+			// customer from reaching their own, already-established
+			// cart — worst case here is a repeat customer's older,
+			// unrelated guest token failing to fold in this one time.
+			_ = s.mergeGuestIntoCustomer(ctx, identity.CustomerID, identity.SessionToken)
+		}
 		sh, err := s.repo.FindByCustomerID(ctx, identity.CustomerID)
 		if errors.Is(err, ErrNotFound) {
 			return s.repo.CreateForCustomer(ctx, identity.CustomerID)
@@ -50,6 +69,83 @@ func (s *Service) resolve(ctx context.Context, identity Identity) (*shell, error
 	}
 
 	return s.repo.CreateGuestCart(ctx)
+}
+
+// mergeGuestIntoCustomer folds guestSessionToken's cart into customerID's
+// own cart: same one-branch-per-cart rule AddItem enforces (an empty
+// customer cart just adopts the guest cart's branch), same
+// availability-aware quantity logic (clamped rather than failing
+// outright if stock moved in the meantime), and the same UpsertItem the
+// guest cart's own additions went through — a merge is just each of
+// those items being "added" again, to a different cart. No-ops quietly
+// (nil, no error) whenever there's nothing to merge: an unknown or
+// already-guest-only token, or a real one with an empty cart behind it.
+// The guest cart is cleared, not deleted — same as a normal checkout
+// leaves it — so a stale reference to its id elsewhere still resolves to
+// a valid, simply-empty cart rather than a dangling one.
+func (s *Service) mergeGuestIntoCustomer(ctx context.Context, customerID, guestSessionToken string) error {
+	guest, err := s.repo.FindBySessionToken(ctx, guestSessionToken)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	items, err := s.repo.ItemsFor(ctx, guest.ID)
+	if err != nil {
+		return fmt.Errorf("load guest cart items: %w", err)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+
+	mine, err := s.repo.FindByCustomerID(ctx, customerID)
+	if errors.Is(err, ErrNotFound) {
+		mine, err = s.repo.CreateForCustomer(ctx, customerID)
+	}
+	if err != nil {
+		return err
+	}
+
+	if mine.BranchID == nil && guest.BranchID != nil {
+		if err := s.repo.SetBranch(ctx, mine.ID, *guest.BranchID); err != nil {
+			return err
+		}
+	}
+
+	for _, item := range items {
+		existingQty, err := s.repo.ExistingQuantity(ctx, mine.ID, item.ProductVariantID)
+		if err != nil {
+			return err
+		}
+		available, _, err := s.inventory.AvailableStockForVariant(ctx, item.BranchID, item.ProductVariantID)
+		if err != nil {
+			// Best-effort here too: Checkout re-validates stock for
+			// real (ReserveStock, inside its own transaction) right
+			// after this — an availability lookup hiccup during the
+			// merge just means this one line doesn't carry over,
+			// not that the whole checkout should fail on the spot.
+			continue
+		}
+		qty := item.Quantity
+		if existingQty+qty > available {
+			qty = available - existingQty
+		}
+		if qty <= 0 {
+			continue
+		}
+		// item.UnitPrice, not today's price from AvailableStockForVariant
+		// above: a merge isn't a new add-to-cart decision, so it keeps
+		// whatever price the guest cart already snapshotted, the same
+		// way an existing line surviving a repeat AddItem call does
+		// (see UpsertItem's own doc comment).
+		if err := s.repo.UpsertItem(ctx, mine.ID, item.BranchID, item.ProductVariantID, qty, item.UnitPrice); err != nil {
+			return err
+		}
+	}
+
+	return s.repo.Clear(ctx, guest.ID)
 }
 
 func (s *Service) Get(ctx context.Context, identity Identity) (*Cart, error) {

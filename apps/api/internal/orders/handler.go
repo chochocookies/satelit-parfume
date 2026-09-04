@@ -24,13 +24,18 @@ func NewHandler(service *Service) *Handler {
 
 // identity mirrors cart's own — duplicated rather than imported/exported,
 // since it's a few lines reading gin.Context, not shared logic worth a
-// cross-package dependency for.
+// cross-package dependency for. Reads both fields whenever both are
+// present (see cart.identity's own doc comment on why): this is the path
+// that actually matters for it — Checkout is where a merged-away guest
+// cart would otherwise turn into a hard ErrEmptyCart failure the instant
+// a customer logs in with items already sitting in it.
 func identity(c *gin.Context) cart.Identity {
+	id := cart.Identity{SessionToken: c.GetHeader("X-Cart-Token")}
 	if subjectType, ok := c.Get(auth.ContextSubjectType); ok && subjectType == "customer" {
 		subjectID, _ := c.Get(auth.ContextSubjectID)
-		return cart.Identity{CustomerID: subjectID.(string)}
+		id.CustomerID = subjectID.(string)
 	}
-	return cart.Identity{SessionToken: c.GetHeader("X-Cart-Token")}
+	return id
 }
 
 func (h *Handler) Checkout(c *gin.Context) {

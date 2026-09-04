@@ -284,11 +284,13 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-// OrderConfirmedPanel covers all three post-checkout outcomes: paid at
-// counter later (unchanged from before), paying online now (new — polls
-// for the webhook the same way app/pos/page.tsx's QrisWaitScreen does),
-// and the order-succeeded-but-payment-creation-failed edge case (order
-// is still real; this just explains why there's no QR code to show).
+// OrderConfirmedPanel covers all three post-checkout outcomes: pay at
+// counter (shows a QR of the order number itself — scannable by staff,
+// with the number also printed above for anyone reading it out instead),
+// paying online now (polls for the webhook the same way
+// app/pos/page.tsx's QrisWaitScreen does), and the
+// order-succeeded-but-payment-creation-failed edge case, which folds
+// into the same pay-at-counter view plus one extra line explaining why.
 function OrderConfirmedPanel({
   order,
   initialPayment,
@@ -348,20 +350,24 @@ function OrderConfirmedPanel({
         </>
       )}
 
-      {!currentPayment && payError && (
+      {!currentPayment && (
         <>
-          <p className="mt-3 text-xs text-red-400">Pembayaran online gagal dibuat: {payError}</p>
-          <p className="mt-2 text-xs text-ink-muted">
-            Pesananmu tetap tersimpan — datang ke toko, tunjukkan nomor pesanan, dan bayar di kasir untuk ambil
-            pesananmu.
+          {payError && <p className="mt-3 text-xs text-red-400">Pembayaran online gagal dibuat: {payError}</p>}
+          {/* Same QR pattern as the online-payment branch above, but
+              encoding the order number rather than a qr_string — there's
+              no Duitku payment behind a pay-at-counter order to scan,
+              just the order itself. Staff can scan it to pull the order
+              up instantly, and the number stays visible above either
+              way, so this only adds an option rather than replacing the
+              "just read it out" fallback that already worked fine. */}
+          <div className="mt-3 flex justify-center rounded-2xl border border-line bg-white p-4">
+            <QRCodeSVG value={order.order_number} size={200} />
+          </div>
+          <p className="mt-3 text-center text-xs text-ink-muted">
+            Tunjukkan QR ini untuk dipindai kasir, atau sebutkan nomor pesanan di atas — lalu bayar di kasir untuk
+            ambil pesananmu.
           </p>
         </>
-      )}
-
-      {!currentPayment && !payError && (
-        <p className="mt-3 text-xs text-ink-muted">
-          Simpan nomor ini — datang ke toko, tunjukkan nomor pesanan, dan bayar di kasir untuk ambil pesananmu.
-        </p>
       )}
     </div>
   );

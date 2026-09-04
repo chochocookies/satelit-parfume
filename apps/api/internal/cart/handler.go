@@ -24,12 +24,22 @@ func NewHandler(service *Service) *Handler {
 // context if the caller sent a valid Bearer token, otherwise the
 // X-Cart-Token header a guest's browser is expected to have saved from an
 // earlier response's session_token.
+//
+// Both fields are read whenever both are present — not one or the
+// other — so a customer who added items before logging in (their cart
+// tracked under the guest X-Cart-Token the whole time) doesn't have
+// that cart go missing the moment they authenticate: resolve() below
+// merges it into their own cart precisely because it still has both
+// pieces of identity to work with here. See the same duplicated
+// function in internal/orders/handler.go, which mattered most in
+// practice — Checkout is where this cart is actually needed for real.
 func identity(c *gin.Context) Identity {
+	id := Identity{SessionToken: c.GetHeader("X-Cart-Token")}
 	if subjectType, ok := c.Get(auth.ContextSubjectType); ok && subjectType == "customer" {
 		subjectID, _ := c.Get(auth.ContextSubjectID)
-		return Identity{CustomerID: subjectID.(string)}
+		id.CustomerID = subjectID.(string)
 	}
-	return Identity{SessionToken: c.GetHeader("X-Cart-Token")}
+	return id
 }
 
 func (h *Handler) Get(c *gin.Context) {
