@@ -533,6 +533,14 @@ export type Payment = {
   updated_at: string;
 };
 
+// WishlistEntry.product is the same ProductListItem shape a shop grid
+// already renders (see internal/wishlist's own Entry doc comment on the
+// backend) — ProductCard needs no wishlist-specific variant of itself.
+export type WishlistEntry = {
+  product: ProductListItem;
+  added_at: string;
+};
+
 // ── Advanced inventory (Phase 11) ───────────────────────────────────
 
 export type InventoryItem = {
@@ -704,6 +712,15 @@ export const apiClient = {
     }),
 
   getOrderPayment: (orderId: string) => customerRequest<Payment>(`/api/v1/orders/${orderId}/payment`),
+
+  // Wishlist (Phase 12, part 1) — customer-only, same RequireAuth +
+  // subject-type gate as payOrder/getOrderPayment above, so it goes
+  // through the same customerRequest helper.
+  listWishlist: () => customerRequest<WishlistEntry[]>("/api/v1/wishlist"),
+  addToWishlist: (productId: string) =>
+    customerRequest<null>(`/api/v1/wishlist/${productId}`, { method: "POST" }),
+  removeFromWishlist: (productId: string) =>
+    customerRequest<null>(`/api/v1/wishlist/${productId}`, { method: "DELETE" }),
 
   // Auth
   staffLogin: (email: string, password: string) =>

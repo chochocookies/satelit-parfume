@@ -31,6 +31,7 @@ import (
 	"satelit-parfume-api/internal/shifts"
 	"satelit-parfume-api/internal/stock"
 	"satelit-parfume-api/internal/users"
+	"satelit-parfume-api/internal/wishlist"
 	"satelit-parfume-api/pkg/database"
 	"satelit-parfume-api/pkg/jwt"
 	"satelit-parfume-api/pkg/logger"
@@ -175,6 +176,10 @@ func main() {
 	productsRepo := products.NewRepository(pg)
 	productsHandler := products.NewHandler(productsRepo, categoriesRepo, inventoryRepo)
 
+	wishlistRepo := wishlist.NewRepository(pg)
+	wishlistService := wishlist.NewService(wishlistRepo, productsRepo)
+	wishlistHandler := wishlist.NewHandler(wishlistService)
+
 	cartRepo := cart.NewRepository(pg)
 	cartService := cart.NewService(cartRepo, inventoryRepo)
 	cartHandler := cart.NewHandler(cartService)
@@ -267,6 +272,19 @@ func main() {
 			ordersGroup.POST("/:id/cancel", ordersHandler.CancelMine)
 			ordersGroup.POST("/:id/pay", paymentsHandler.Pay)
 			ordersGroup.GET("/:id/payment", paymentsHandler.GetForOrder)
+		}
+
+		// Wishlist (Phase 12, part 1) — customer-only, same as the "my
+		// orders" group just above: RequireAuth accepts a staff token
+		// too, so Handler's own subject-type check is what actually
+		// restricts this to customers, matching payments.Handler.Pay's
+		// pattern.
+		wishlistGroup := v1.Group("/wishlist")
+		wishlistGroup.Use(auth.RequireAuth(accessTokens))
+		{
+			wishlistGroup.GET("", wishlistHandler.List)
+			wishlistGroup.POST("/:productId", wishlistHandler.Add)
+			wishlistGroup.DELETE("/:productId", wishlistHandler.Remove)
 		}
 
 		// Payment webhook — deliberately outside every auth group. See

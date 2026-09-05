@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { LogOut, Menu, Search, User, X } from "lucide-react";
+import { Heart, LogOut, Menu, Search, User, X } from "lucide-react";
 
 import { BranchSelector } from "@/components/branch-selector";
 import { CartButton } from "@/components/cart-button";
@@ -12,9 +12,11 @@ import { apiClient } from "@/lib/api-client";
 
 // Deliberately minimal nav: Logo, Shop, search, branch selector, account,
 // cart. Section 14 lists a fuller set (Collections, Find Your Scent,
-// Wishlist) but those lead to pages that don't exist yet (Phase 12) — a
-// nav link to nowhere is worse than no link. Account now has somewhere
-// real to go: /login and /register (see stores/customer-auth-store.ts).
+// Wishlist) but most of those still lead to pages that don't exist yet
+// — a nav link to nowhere is worse than no link. Wishlist is the first
+// exception (Phase 12): it's customer-only the same way the account
+// greeting itself is, so it sits next to that instead of in the
+// everyone-sees-it Shop row.
 export function SiteHeader() {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -78,6 +80,9 @@ export function SiteHeader() {
             <div className="hidden items-center gap-3 sm:flex">
               {customer ? (
                 <>
+                  <Link href="/wishlist" aria-label="Wishlist" className="text-ink-muted transition hover:text-ink">
+                    <Heart className="h-4 w-4" />
+                  </Link>
                   <span className="text-sm text-ink-muted">Halo, {customer.name.split(" ")[0]}</span>
                   <button
                     onClick={handleLogout}
@@ -131,10 +136,20 @@ export function SiteHeader() {
             (customer ? (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-ink-muted">Halo, {customer.name.split(" ")[0]}</span>
-                <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-ink">
-                  <LogOut className="h-4 w-4" />
-                  Keluar
-                </button>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href="/wishlist"
+                    className="flex items-center gap-1.5 text-sm text-ink"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Heart className="h-4 w-4" />
+                    Wishlist
+                  </Link>
+                  <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-ink">
+                    <LogOut className="h-4 w-4" />
+                    Keluar
+                  </button>
+                </div>
               </div>
             ) : (
               <Link
