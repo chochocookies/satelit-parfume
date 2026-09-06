@@ -9,6 +9,7 @@ import { useBranchStore } from "@/stores/branch-store";
 import { useCart } from "@/hooks/use-cart";
 import { formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProductReviews } from "@/components/product-reviews";
 
 export function ProductDetailClient({ slug }: { slug: string }) {
   const [quantity, setQuantity] = useState(1);
@@ -143,6 +144,8 @@ export function ProductDetailClient({ slug }: { slug: string }) {
           {product.size && <p className="text-sm text-ink-muted">Ukuran: {product.size}</p>}
         </div>
       </div>
+
+      <ProductReviews slug={slug} />
     </main>
   );
 }

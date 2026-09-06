@@ -28,6 +28,7 @@ import (
 	"satelit-parfume-api/internal/payments"
 	"satelit-parfume-api/internal/payments/duitku"
 	"satelit-parfume-api/internal/products"
+	"satelit-parfume-api/internal/reviews"
 	"satelit-parfume-api/internal/shifts"
 	"satelit-parfume-api/internal/stock"
 	"satelit-parfume-api/internal/users"
@@ -180,6 +181,10 @@ func main() {
 	wishlistService := wishlist.NewService(wishlistRepo, productsRepo)
 	wishlistHandler := wishlist.NewHandler(wishlistService)
 
+	reviewsRepo := reviews.NewRepository(pg)
+	reviewsService := reviews.NewService(reviewsRepo)
+	reviewsHandler := reviews.NewHandler(reviewsService, productsRepo)
+
 	cartRepo := cart.NewRepository(pg)
 	cartService := cart.NewService(cartRepo, inventoryRepo)
 	cartHandler := cart.NewHandler(cartService)
@@ -236,6 +241,15 @@ func main() {
 		// Public catalog reads — no auth required, matches section 15/16/17.
 		v1.GET("/products", productsHandler.List)
 		v1.GET("/products/:slug", productsHandler.GetBySlug)
+		v1.GET("/products/:slug/reviews", reviewsHandler.GetForProduct)
+		// Same :slug param as the two routes above, not :productId — gin's
+		// router tree only allows one wildcard name per path position, so
+		// this has to match GetBySlug's own param name even though these
+		// two conceptually want a product id; Submit/Remove resolve the
+		// slug themselves (see reviews.Handler, which already has a
+		// products.Repository on hand for exactly this).
+		v1.POST("/products/:slug/reviews", auth.RequireAuth(accessTokens), reviewsHandler.Submit)
+		v1.DELETE("/products/:slug/reviews", auth.RequireAuth(accessTokens), reviewsHandler.Remove)
 		v1.GET("/categories", categoriesHandler.List)
 
 		// Public branch reads — the future branch selector (section 10)

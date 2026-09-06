@@ -541,6 +541,20 @@ export type WishlistEntry = {
   added_at: string;
 };
 
+export type Review = {
+  id: string;
+  customer_name: string;
+  rating: number;
+  comment?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductReviews = {
+  summary: { average: number; count: number };
+  reviews: Review[];
+};
+
 // ── Advanced inventory (Phase 11) ───────────────────────────────────
 
 export type InventoryItem = {
@@ -721,6 +735,23 @@ export const apiClient = {
     customerRequest<null>(`/api/v1/wishlist/${productId}`, { method: "POST" }),
   removeFromWishlist: (productId: string) =>
     customerRequest<null>(`/api/v1/wishlist/${productId}`, { method: "DELETE" }),
+
+  // Reviews (Phase 12, part 2) — read is public, write needs a customer
+  // with a COMPLETED order for the product (enforced server-side; see
+  // internal/reviews' Service.Submit). Both keyed by slug, not product
+  // id — see internal/reviews' route comment in main.go on why (gin's
+  // router only allows one wildcard name per path position, and
+  // GetForProduct already needed :slug to match its GET /products/:slug
+  // sibling).
+  getProductReviews: (slug: string) =>
+    request<ProductReviews>(`/api/v1/products/${encodeURIComponent(slug)}/reviews`),
+  submitReview: (slug: string, rating: number, comment: string) =>
+    customerRequest<null>(`/api/v1/products/${encodeURIComponent(slug)}/reviews`, {
+      method: "POST",
+      body: JSON.stringify({ rating, comment }),
+    }),
+  deleteReview: (slug: string) =>
+    customerRequest<null>(`/api/v1/products/${encodeURIComponent(slug)}/reviews`, { method: "DELETE" }),
 
   // Auth
   staffLogin: (email: string, password: string) =>
