@@ -1,0 +1,3 @@
+ALTER TABLE orders DROP COLUMN IF EXISTS discount_amount;
+ALTER TABLE orders DROP COLUMN IF EXISTS promo_code;
+DROP TABLE IF EXISTS promo_codes;
