@@ -1,0 +1,22 @@
+{
+  "name": "satelit-parfume-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Capacitor native shell for the Satelit Parfume web app (Phase 14). See README.md in this folder before running anything here.",
+  "scripts": {
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
+    "@types/node": "^26.5.0"
+  }
+}
